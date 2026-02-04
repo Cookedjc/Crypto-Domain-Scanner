@@ -152,7 +152,11 @@ export default function ScanDetails() {
                       <AlertTriangle className="w-5 h-5 text-amber-500" />
                     )}
                     <div className="flex flex-col">
-                      <span className="text-lg font-medium leading-none">{scan.pqcStatus}</span>
+                      <span className="text-lg font-medium leading-none">
+                        {scan.protocolVersion?.includes('1.3') && scan.keyExchange?.toLowerCase().includes('ml-kem') && scan.keyExchange?.toLowerCase().includes('x25519')
+                          ? 'Partial'
+                          : scan.pqcStatus}
+                      </span>
                       {scan.keyExchange?.toLowerCase().includes('hybrid') || scan.keyExchange?.toLowerCase().includes('ml-kem') ? (
                         <span className="text-[10px] text-emerald-500 font-mono mt-1">PQ Support Detected</span>
                       ) : (
