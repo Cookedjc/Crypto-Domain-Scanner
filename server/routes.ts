@@ -24,7 +24,7 @@ async function resolveSubdomains(domain: string): Promise<string[]> {
     }
   }));
 
-  return [...new Set(found)];
+  return Array.from(found);
 }
 
 async function performScan(host: string, port: number) {
@@ -180,7 +180,7 @@ export async function registerRoutes(
             pqcStatus: analysis.pqcStatus,
             cipherName: rawData.cipher?.name || "Unknown",
             protocolVersion: rawData.protocol || "Unknown",
-            keyExchange: rawData.ephemeral?.name || "Unknown", // Simplified
+            keyExchange: rawData.ephemeral?.name || "Unknown",
             details: {
               ...rawData,
               explanation: analysis.explanation
