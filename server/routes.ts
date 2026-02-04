@@ -77,16 +77,27 @@ async function performScan(host: string, port: number) {
  * using OpenSSL s_client directly for detailed protocol information.
  */
 async function getKEMInfo(host: string, port: number): Promise<{ kem: string, raw: string, error?: string, command: string }> {
+  // We use -groups to list supported groups and check for ML-KEM / Hybrid variants
+  // Adding -msg can sometimes help but -v is usually enough for s_client
   const command = `openssl s_client -connect ${host}:${port} -tls1_3 </dev/null 2>&1`;
   try {
-    const { stdout } = await execPromise(`${command} | grep -i key`);
+    // We want to capture "Key exchange", "Groups", and "Shared" information
+    const { stdout } = await execPromise(`${command} | grep -Ei "key|group|share"`);
     
     if (stdout) {
-      // Look for "Key exchange" or "Key Encapsulation Mechanism" etc
-      const match = stdout.match(/(?:Key exchange|Key):\s+(.+)/i);
-      if (match && match[1]) {
-        return { kem: match[1].trim(), raw: stdout, command };
+      // Heuristic for ML-KEM or Hybrid
+      const isHybrid = stdout.toLowerCase().includes("ml-kem") || 
+                       stdout.toLowerCase().includes("x25519_kyber") ||
+                       stdout.toLowerCase().includes("p256_kyber");
+      
+      const match = stdout.match(/(?:Key exchange|Key|Group|Server Temp Key):\s+(.+)/i);
+      let kem = match && match[1] ? match[1].trim() : "Unknown";
+      
+      if (isHybrid) {
+        kem = `Hybrid PQC (${kem})`;
       }
+
+      return { kem, raw: stdout, command };
     }
   } catch (e: any) {
     // If grep fails, let's try to get the full output to see why

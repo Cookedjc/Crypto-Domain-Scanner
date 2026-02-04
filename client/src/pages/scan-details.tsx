@@ -203,14 +203,14 @@ export default function ScanDetails() {
                 <div className="space-y-2">
                   <h4 className="text-sm font-semibold text-muted-foreground">OpenSSL Command Executed</h4>
                   <code className="block p-3 bg-black/60 rounded-lg border border-border/50 font-mono text-xs text-emerald-400">
-                    $ {details?.command || "openssl s_client -connect " + scan.domain + ":" + scan.port}
+                    $ {details?.command || "openssl s_client -connect " + scan.domain + ":" + scan.port + " -tls1_3"}
                   </code>
                 </div>
 
                 <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground">Raw Command Output</h4>
-                  <pre className="block p-4 bg-black/40 rounded-lg border border-border/50 font-mono text-[10px] text-muted-foreground overflow-x-auto max-h-[300px] overflow-y-auto">
-                    {scan.rawOutput || "No raw output captured."}
+                  <h4 className="text-sm font-semibold text-muted-foreground">Cryptographic Negotiation (Key Share / Groups)</h4>
+                  <pre className="block p-4 bg-black/40 rounded-lg border border-border/50 font-mono text-[10px] text-emerald-500/90 overflow-x-auto max-h-[300px] overflow-y-auto">
+                    {scan.rawOutput || "No negotiation details captured."}
                   </pre>
                 </div>
 
