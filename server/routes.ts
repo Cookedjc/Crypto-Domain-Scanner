@@ -5,6 +5,10 @@ import { api, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import tls from "tls";
 import dns from "dns/promises";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execPromise = promisify(exec);
 
 async function resolveSubdomains(domain: string): Promise<string[]> {
   // Simple check for common subdomains since we can't do full DNS enumeration easily
@@ -70,9 +74,26 @@ async function performScan(host: string, port: number) {
 
 /**
  * Enhanced scan to collect Key Encapsulation Mechanism (KEM) info
- * using OpenSSL-like probes for PQC/Modern algorithms.
+ * using OpenSSL s_client directly for detailed protocol information.
  */
 async function getKEMInfo(host: string, port: number): Promise<string> {
+  try {
+    // We use timeout to ensure it doesn't hang
+    const command = `timeout 5s openssl s_client -connect ${host}:${port} </dev/null 2>&1 | grep "Key exchange"`;
+    const { stdout } = await execPromise(command);
+    
+    if (stdout) {
+      // Example output: "    Key exchange: X25519" or "    Key exchange: Kyber768"
+      const match = stdout.match(/Key exchange:\s+(.+)/i);
+      if (match && match[1]) {
+        return match[1].trim();
+      }
+    }
+  } catch (e) {
+    // If grep fails or command timeouts
+  }
+
+  // Fallback to TLS socket method if OpenSSL execution fails
   return new Promise((resolve) => {
     const socket = tls.connect({
       host,
@@ -93,8 +114,6 @@ async function getKEMInfo(host: string, port: number): Promise<string> {
         }
       }
       
-      // Heuristic for PQC algorithms which might appear in the name
-      // or protocol extensions in future Node versions
       const cipher = socket.getCipher();
       if (cipher.name.toLowerCase().includes('kyber') || 
           cipher.name.toLowerCase().includes('frodo') ||
