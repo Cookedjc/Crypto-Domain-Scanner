@@ -151,12 +151,19 @@ export default function ScanDetails() {
                     ) : (
                       <AlertTriangle className="w-5 h-5 text-amber-500" />
                     )}
-                    <span className="text-lg font-medium">{scan.pqcStatus}</span>
+                    <div className="flex flex-col">
+                      <span className="text-lg font-medium leading-none">{scan.pqcStatus}</span>
+                      {scan.keyExchange?.toLowerCase().includes('hybrid') || scan.keyExchange?.toLowerCase().includes('ml-kem') ? (
+                        <span className="text-[10px] text-emerald-500 font-mono mt-1">PQ Support Detected</span>
+                      ) : (
+                        <span className="text-[10px] text-amber-500 font-mono mt-1">No PQ Support Detected</span>
+                      )}
+                    </div>
                   </div>
                   <p className="text-xs text-muted-foreground leading-relaxed mt-1">
                     {scan.pqcStatus === 'Ready' 
                       ? "This configuration uses quantum-resistant algorithms."
-                      : "Upgrade to hybrid key exchange (e.g., X25519Kyber768) recommended."}
+                      : "The target host does not currently negotiate Post-Quantum algorithms on this port."}
                   </p>
                 </div>
 
