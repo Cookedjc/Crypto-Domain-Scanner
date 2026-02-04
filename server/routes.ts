@@ -68,6 +68,52 @@ async function performScan(host: string, port: number) {
   });
 }
 
+/**
+ * Enhanced scan to collect Key Encapsulation Mechanism (KEM) info
+ * using OpenSSL-like probes for PQC/Modern algorithms.
+ */
+async function getKEMInfo(host: string, port: number): Promise<string> {
+  return new Promise((resolve) => {
+    const socket = tls.connect({
+      host,
+      port,
+      servername: host,
+      rejectUnauthorized: false,
+    }, () => {
+      const ephemeral = (socket as any).getEphemeralKeyInfo?.();
+      let kem = "Unknown";
+      
+      if (ephemeral) {
+        if (ephemeral.type === 'ECDH') {
+          kem = `ECDH (${ephemeral.name})`;
+        } else if (ephemeral.type === 'DH') {
+          kem = `DH (${ephemeral.size} bits)`;
+        } else if (ephemeral.name) {
+          kem = ephemeral.name;
+        }
+      }
+      
+      // Heuristic for PQC algorithms which might appear in the name
+      // or protocol extensions in future Node versions
+      const cipher = socket.getCipher();
+      if (cipher.name.toLowerCase().includes('kyber') || 
+          cipher.name.toLowerCase().includes('frodo') ||
+          cipher.name.toLowerCase().includes('dilithium')) {
+        kem = `Hybrid PQC (${cipher.name})`;
+      }
+
+      socket.end();
+      resolve(kem);
+    });
+
+    socket.on('error', () => resolve("Discovery Failed"));
+    socket.setTimeout(4000, () => {
+      socket.destroy();
+      resolve("Timeout");
+    });
+  });
+}
+
 function calculateScore(details: any): { score: number, grade: string, pqcStatus: string, explanation: string[] } {
   let score = 0;
   const explanation: string[] = [];
@@ -169,6 +215,7 @@ export async function registerRoutes(
       for (const host of targets) {
         for (const port of input.ports) {
           const rawData = await performScan(host, port);
+          const kemInfo = await getKEMInfo(host, port);
           const analysis = calculateScore(rawData);
 
           const scanRecord = await storage.createScan({
@@ -180,12 +227,13 @@ export async function registerRoutes(
             pqcStatus: analysis.pqcStatus,
             cipherName: rawData.cipher?.name || "Unknown",
             protocolVersion: rawData.protocol || "Unknown",
-            keyExchange: rawData.ephemeral?.name || "Unknown",
+            keyExchange: kemInfo !== "Unknown" ? kemInfo : (rawData.ephemeral?.name || "Unknown"),
             details: {
               ...rawData,
-              explanation: analysis.explanation
+              explanation: analysis.explanation,
+              kem: kemInfo
             }
-          });
+          } as any);
           results.push(scanRecord);
         }
       }
