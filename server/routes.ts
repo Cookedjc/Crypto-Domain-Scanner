@@ -77,7 +77,7 @@ async function performScan(host: string, port: number) {
  * using OpenSSL s_client directly for detailed protocol information.
  */
 async function getKEMInfo(host: string, port: number): Promise<{ kem: string, raw: string, error?: string, command: string }> {
-  const command = `timeout 5s openssl s_client -connect ${host}:${port} </dev/null 2>&1`;
+  const command = `openssl s_client -connect ${host}:${port} </dev/null 2>&1`;
   try {
     const { stdout } = await execPromise(`${command} | grep "Key exchange"`);
     
