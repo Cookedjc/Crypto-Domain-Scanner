@@ -13,13 +13,15 @@ import {
   Lock,
   Activity,
   Search,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { Scan } from "@shared/schema";
+import { useQueryClient } from "@tanstack/react-query";
 
 // Helper for status colors
 const getScoreColor = (score: number | null) => {
@@ -35,6 +37,7 @@ const getPqcBadge = (status: string | null) => {
     "Ready": "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
     "Partial": "bg-amber-500/10 text-amber-500 border-amber-500/20",
     "Not Ready": "bg-rose-500/10 text-rose-500 border-rose-500/20",
+    "Error": "bg-rose-500/10 text-rose-500 border-rose-500/20",
   };
   return (
     <Badge variant="outline" className={`font-mono text-[10px] uppercase ${colors[status as keyof typeof colors] || "text-muted-foreground"}`}>
@@ -44,8 +47,21 @@ const getPqcBadge = (status: string | null) => {
 };
 
 export default function Dashboard() {
+  const queryClient = useQueryClient();
   const { data: scans, isLoading } = useScans();
   const [search, setSearch] = useState("");
+
+  // Auto-refresh when scans are in progress (missing protocol/score)
+  const isScanning = scans?.some(s => !s.protocolVersion && s.score === null);
+  
+  useEffect(() => {
+    if (isScanning) {
+      const interval = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ["/api/scans"] });
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [isScanning, queryClient]);
 
   const filteredScans = scans?.filter(s => 
     s.domain.toLowerCase().includes(search.toLowerCase())
@@ -69,7 +85,15 @@ export default function Dashboard() {
           <h1 className="text-3xl font-display font-bold text-white mb-2">Security Overview</h1>
           <p className="text-muted-foreground font-mono text-sm">Monitor cryptographic posture across your infrastructure.</p>
         </div>
-        <CreateScanDialog />
+        <div className="flex items-center gap-4">
+          {isScanning && (
+            <div className="flex items-center gap-2 text-primary font-mono text-xs animate-pulse">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              SCAN IN PROGRESS...
+            </div>
+          )}
+          <CreateScanDialog />
+        </div>
       </div>
 
       {/* Stats Grid */}

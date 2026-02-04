@@ -38,7 +38,7 @@ async function performScan(host: string, port: number) {
       const cipher = socket.getCipher();
       const cert = socket.getPeerCertificate();
       const protocol = socket.getProtocol();
-      const ephemeral = (socket as any).getEphemeralKeyInfo?.(); // Node types might miss this sometimes
+      const ephemeral = (socket as any).getEphemeralKeyInfo?.(); 
       
       socket.end();
       resolve({ 
@@ -60,6 +60,7 @@ async function performScan(host: string, port: number) {
       resolve({ error: err.message });
     });
 
+    // Enforce 5s timeout as requested
     socket.setTimeout(5000, () => {
       socket.destroy();
       resolve({ error: "Connection timed out" });
