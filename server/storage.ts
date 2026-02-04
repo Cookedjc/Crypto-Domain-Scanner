@@ -6,6 +6,7 @@ export interface IStorage {
   createScan(scan: InsertScan): Promise<Scan>;
   getScans(): Promise<Scan[]>;
   getScan(id: number): Promise<Scan | undefined>;
+  deleteScan(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -21,6 +22,10 @@ export class DatabaseStorage implements IStorage {
   async getScan(id: number): Promise<Scan | undefined> {
     const [scan] = await db.select().from(scans).where(eq(scans.id, id));
     return scan;
+  }
+
+  async deleteScan(id: number): Promise<void> {
+    await db.delete(scans).where(eq(scans.id, id));
   }
 }
 

@@ -1,4 +1,4 @@
-import { useScans } from "@/hooks/use-scans";
+import { useScans, useDeleteScan } from "@/hooks/use-scans";
 import Layout from "@/components/layout";
 import { CreateScanDialog } from "@/components/create-scan-dialog";
 import { Link } from "wouter";
@@ -14,7 +14,8 @@ import {
   Activity,
   Search,
   Clock,
-  Loader2
+  Loader2,
+  Trash2
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -192,12 +193,27 @@ function StatsCard({ title, value, icon: Icon, trend, color }: any) {
 
 function ScanRow({ scan }: { scan: Scan }) {
   const scoreClass = getScoreColor(scan.score);
+  const deleteScan = useDeleteScan();
+  const [isDeleting, setIsDeleting] = useState(false);
   
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (confirm(`Are you sure you want to delete the scan for ${scan.domain}?`)) {
+      setIsDeleting(true);
+      try {
+        await deleteScan.mutateAsync(scan.id);
+      } finally {
+        setIsDeleting(false);
+      }
+    }
+  };
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="p-4 hover:bg-muted/30 transition-colors group"
+      className="p-4 hover:bg-muted/30 transition-colors group relative"
     >
       <div className="flex items-center gap-4">
         {/* Score Indicator */}
@@ -229,13 +245,24 @@ function ScanRow({ scan }: { scan: Scan }) {
           </div>
         </div>
 
-        {/* Action */}
-        <Link href={`/scans/${scan.id}`}>
-          <Button variant="ghost" size="sm" className="opacity-0 group-hover:opacity-100 transition-opacity">
-            Details
-            <ArrowRight className="w-4 h-4 ml-2" />
+        {/* Actions */}
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Link href={`/scans/${scan.id}`}>
+            <Button variant="ghost" size="sm">
+              Details
+              <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Link>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+            onClick={handleDelete}
+            disabled={isDeleting}
+          >
+            {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
           </Button>
-        </Link>
+        </div>
       </div>
     </motion.div>
   );

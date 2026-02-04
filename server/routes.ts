@@ -76,61 +76,27 @@ async function performScan(host: string, port: number) {
  * Enhanced scan to collect Key Encapsulation Mechanism (KEM) info
  * using OpenSSL s_client directly for detailed protocol information.
  */
-async function getKEMInfo(host: string, port: number): Promise<string> {
+async function getKEMInfo(host: string, port: number): Promise<{ kem: string, raw: string, error?: string, command: string }> {
+  const command = `timeout 5s openssl s_client -connect ${host}:${port} </dev/null 2>&1`;
   try {
-    // We use timeout to ensure it doesn't hang
-    const command = `timeout 5s openssl s_client -connect ${host}:${port} </dev/null 2>&1 | grep "Key exchange"`;
-    const { stdout } = await execPromise(command);
+    const { stdout } = await execPromise(`${command} | grep "Key exchange"`);
     
     if (stdout) {
-      // Example output: "    Key exchange: X25519" or "    Key exchange: Kyber768"
       const match = stdout.match(/Key exchange:\s+(.+)/i);
       if (match && match[1]) {
-        return match[1].trim();
+        return { kem: match[1].trim(), raw: stdout, command };
       }
     }
-  } catch (e) {
-    // If grep fails or command timeouts
+  } catch (e: any) {
+    // If grep fails, let's try to get the full output to see why
+    try {
+      const { stdout, stderr } = await execPromise(command);
+      return { kem: "Unknown", raw: stdout || stderr, error: e.message, command };
+    } catch (inner: any) {
+      return { kem: "Unknown", raw: inner.stdout || inner.stderr || inner.message, error: inner.message, command };
+    }
   }
-
-  // Fallback to TLS socket method if OpenSSL execution fails
-  return new Promise((resolve) => {
-    const socket = tls.connect({
-      host,
-      port,
-      servername: host,
-      rejectUnauthorized: false,
-    }, () => {
-      const ephemeral = (socket as any).getEphemeralKeyInfo?.();
-      let kem = "Unknown";
-      
-      if (ephemeral) {
-        if (ephemeral.type === 'ECDH') {
-          kem = `ECDH (${ephemeral.name})`;
-        } else if (ephemeral.type === 'DH') {
-          kem = `DH (${ephemeral.size} bits)`;
-        } else if (ephemeral.name) {
-          kem = ephemeral.name;
-        }
-      }
-      
-      const cipher = socket.getCipher();
-      if (cipher.name.toLowerCase().includes('kyber') || 
-          cipher.name.toLowerCase().includes('frodo') ||
-          cipher.name.toLowerCase().includes('dilithium')) {
-        kem = `Hybrid PQC (${cipher.name})`;
-      }
-
-      socket.end();
-      resolve(kem);
-    });
-
-    socket.on('error', () => resolve("Discovery Failed"));
-    socket.setTimeout(4000, () => {
-      socket.destroy();
-      resolve("Timeout");
-    });
-  });
+  return { kem: "Unknown", raw: "", command };
 }
 
 function calculateScore(details: any): { score: number, grade: string, pqcStatus: string, explanation: string[] } {
@@ -219,6 +185,16 @@ export async function registerRoutes(
     res.json(scan);
   });
 
+  app.delete(api.scans.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const scan = await storage.getScan(id);
+    if (!scan) {
+      return res.status(404).json({ message: "Scan not found" });
+    }
+    await storage.deleteScan(id);
+    res.status(204).end();
+  });
+
   app.post(api.scans.create.path, async (req, res) => {
     try {
       const input = api.scans.create.input.parse(req.body);
@@ -234,7 +210,7 @@ export async function registerRoutes(
       for (const host of targets) {
         for (const port of input.ports) {
           const rawData = await performScan(host, port);
-          const kemInfo = await getKEMInfo(host, port);
+          const kemData = await getKEMInfo(host, port);
           const analysis = calculateScore(rawData);
 
           const scanRecord = await storage.createScan({
@@ -246,11 +222,14 @@ export async function registerRoutes(
             pqcStatus: analysis.pqcStatus,
             cipherName: rawData.cipher?.name || "Unknown",
             protocolVersion: rawData.protocol || "Unknown",
-            keyExchange: kemInfo !== "Unknown" ? kemInfo : (rawData.ephemeral?.name || "Unknown"),
+            keyExchange: kemData.kem !== "Unknown" ? kemData.kem : (rawData.ephemeral?.name || "Unknown"),
+            rawOutput: kemData.raw,
             details: {
               ...rawData,
               explanation: analysis.explanation,
-              kem: kemInfo
+              kem: kemData.kem,
+              error: kemData.error,
+              command: kemData.command
             }
           } as any);
           results.push(scanRecord);

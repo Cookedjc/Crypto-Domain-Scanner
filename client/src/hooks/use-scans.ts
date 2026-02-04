@@ -72,3 +72,30 @@ export function useCreateScan() {
     },
   });
 }
+
+export function useDeleteScan() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const url = buildUrl(api.scans.delete.path, { id });
+      const res = await fetch(url, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete scan");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.scans.list.path] });
+      toast({
+        title: "Scan Deleted",
+        description: "The scan report has been removed.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Deletion Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}

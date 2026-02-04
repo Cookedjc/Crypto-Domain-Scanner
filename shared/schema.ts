@@ -13,11 +13,15 @@ export const scans = pgTable("scans", {
   cipherName: text("cipher_name"),
   protocolVersion: text("protocol_version"),
   keyExchange: text("key_exchange"),
+  rawOutput: text("raw_output"),
   details: jsonb("details").$type<{
     ciphers?: string[];
     certificate?: any;
     handshake?: any;
     vulnerabilities?: string[];
+    kem?: string;
+    error?: string;
+    command?: string;
   }>(),
   createdAt: timestamp("created_at").defaultNow(),
 });

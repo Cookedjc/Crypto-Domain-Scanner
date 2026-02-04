@@ -201,6 +201,27 @@ export default function ScanDetails() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-muted-foreground">OpenSSL Command Executed</h4>
+                  <code className="block p-3 bg-black/60 rounded-lg border border-border/50 font-mono text-xs text-emerald-400">
+                    $ {details?.command || "openssl s_client -connect " + scan.domain + ":" + scan.port}
+                  </code>
+                </div>
+
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-muted-foreground">Raw Command Output</h4>
+                  <pre className="block p-4 bg-black/40 rounded-lg border border-border/50 font-mono text-[10px] text-muted-foreground overflow-x-auto max-h-[300px] overflow-y-auto">
+                    {scan.rawOutput || "No raw output captured."}
+                  </pre>
+                </div>
+
+                {details?.error && (
+                  <div className="p-3 bg-rose-500/10 border border-rose-500/20 rounded-lg">
+                    <h4 className="text-xs font-bold text-rose-500 uppercase mb-1">Execution Errors</h4>
+                    <p className="text-xs font-mono text-rose-400">{details.error}</p>
+                  </div>
+                )}
+                
+                <div className="space-y-2">
                   <h4 className="text-sm font-semibold text-muted-foreground">Detected Ciphers</h4>
                   <div className="flex flex-wrap gap-2">
                     {details?.ciphers?.map((cipher: string, idx: number) => (
