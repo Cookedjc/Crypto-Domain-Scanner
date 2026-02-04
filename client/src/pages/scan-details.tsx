@@ -176,8 +176,15 @@ export default function ScanDetails() {
                 </div>
                 
                 <div className="space-y-1 sm:col-span-2">
-                   <label className="text-xs text-muted-foreground uppercase font-semibold">Key Exchange</label>
-                   <div className="text-sm font-mono text-foreground">{scan.keyExchange}</div>
+                   <label className="text-xs text-muted-foreground uppercase font-semibold">Key Exchange / KEM</label>
+                   <div className="text-sm font-mono text-foreground flex flex-col gap-1">
+                     <span className="text-primary">{scan.keyExchange}</span>
+                     {details?.kem && details.kem !== scan.keyExchange && details.kem !== "Unknown" && (
+                       <span className="text-xs text-muted-foreground italic">
+                         Mechanism: {details.kem}
+                       </span>
+                     )}
+                   </div>
                 </div>
               </CardContent>
             </Card>
