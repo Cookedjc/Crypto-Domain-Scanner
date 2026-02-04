@@ -144,34 +144,6 @@ export default function ScanDetails() {
               </CardHeader>
               <CardContent className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground uppercase font-semibold">Post-Quantum Status</label>
-                  <div className="flex items-center gap-2">
-                    {scan.pqcStatus === 'Ready' ? (
-                      <CheckCircle className="w-5 h-5 text-emerald-500" />
-                    ) : (
-                      <AlertTriangle className="w-5 h-5 text-amber-500" />
-                    )}
-                    <div className="flex flex-col">
-                      <span className="text-lg font-medium leading-none">
-                        {scan.protocolVersion?.includes('1.3') && scan.keyExchange?.toLowerCase().includes('ml-kem') && scan.keyExchange?.toLowerCase().includes('x25519')
-                          ? 'Partial'
-                          : scan.pqcStatus}
-                      </span>
-                      {scan.keyExchange?.toLowerCase().includes('hybrid') || scan.keyExchange?.toLowerCase().includes('ml-kem') ? (
-                        <span className="text-[10px] text-emerald-500 font-mono mt-1">PQ Support Detected</span>
-                      ) : (
-                        <span className="text-[10px] text-amber-500 font-mono mt-1">No PQ Support Detected</span>
-                      )}
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-                    {scan.pqcStatus === 'Ready' 
-                      ? "This configuration uses quantum-resistant algorithms."
-                      : "The target host does not currently negotiate Post-Quantum algorithms on this port."}
-                  </p>
-                </div>
-
-                <div className="space-y-1">
                   <label className="text-xs text-muted-foreground uppercase font-semibold">Protocol Version</label>
                   <div className="flex items-center gap-2">
                     <Lock className="w-5 h-5 text-blue-500" />

@@ -229,7 +229,6 @@ function ScanRow({ scan }: { scan: Scan }) {
           <div className="flex items-center gap-2 mb-1">
             <h3 className="font-semibold text-foreground truncate">{scan.domain}</h3>
             {scan.isSubdomain && <Badge variant="secondary" className="text-[10px]">SUB</Badge>}
-            {getPqcBadge(scan.pqcStatus)}
           </div>
           <div className="flex items-center gap-4 text-xs text-muted-foreground font-mono">
             <span className="flex items-center gap-1">
