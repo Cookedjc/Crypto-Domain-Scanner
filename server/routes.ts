@@ -123,14 +123,35 @@ function calculateScore(details: any): { score: number, grade: string, pqcStatus
 
   // Protocol Scoring
   if (details.protocol === "TLSv1.3") {
-    score += 40;
-    explanation.push("Uses TLS 1.3 (+40)");
+    score += 50; // Increased from 40
+    explanation.push("Uses TLS 1.3 (+50)");
   } else if (details.protocol === "TLSv1.2") {
     score += 20;
     explanation.push("Uses TLS 1.2 (+20)");
   } else {
     score -= 50;
     explanation.push(`Weak protocol: ${details.protocol} (-50)`);
+  }
+
+  // Certificate Scoring (Trusted CA check)
+  if (details.cert) {
+    // Basic check for common trusted root keywords in issuer
+    const issuer = JSON.stringify(details.cert.issuer || "").toLowerCase();
+    const isTrusted = issuer.includes("digicert") || 
+                      issuer.includes("globalsign") || 
+                      issuer.includes("sectigo") || 
+                      issuer.includes("let's encrypt") ||
+                      issuer.includes("google") ||
+                      issuer.includes("amazon") ||
+                      issuer.includes("cloudflare");
+    
+    if (isTrusted) {
+      score += 20;
+      explanation.push("Certificate issued by a recognized Trusted CA (+20)");
+    } else {
+      score += 5;
+      explanation.push("Certificate found but issuer not in preferred list (+5)");
+    }
   }
 
   // Cipher Scoring
@@ -153,8 +174,8 @@ function calculateScore(details: any): { score: number, grade: string, pqcStatus
     // Hybrid/ML-KEM Bonus
     const keyExchange = (details.kem || "").toLowerCase();
     if (keyExchange.includes("hybrid") || keyExchange.includes("ml-kem") || keyExchange.includes("kyber")) {
-      score += 40;
-      explanation.push("Uses Post-Quantum Hybrid/ML-KEM Key Exchange (+40)");
+      score += 60; // Increased from 40
+      explanation.push("Uses Post-Quantum Hybrid/ML-KEM Key Exchange (+60)");
       pqcStatus = "Ready";
     } else if (details.ephemeral) {
       if (details.ephemeral.type === 'ECDH' && ['X25519', 'P-256', 'P-384'].includes(details.ephemeral.name)) {

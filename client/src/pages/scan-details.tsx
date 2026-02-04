@@ -54,11 +54,11 @@ export default function ScanDetails() {
 
   // Mock data for radar chart if real metrics aren't detailed enough
   const chartData = [
-    { subject: 'Protocol', A: isPending ? 0 : 90, fullMark: 100 },
-    { subject: 'Key Exchange', A: isPending ? 0 : 85, fullMark: 100 },
-    { subject: 'Cipher Strength', A: isPending ? 0 : scan.score || 70, fullMark: 100 },
-    { subject: 'Certificate', A: isPending ? 0 : 95, fullMark: 100 },
-    { subject: 'PQC Readiness', A: isPending ? 0 : (scan.pqcStatus === 'Ready' ? 100 : scan.pqcStatus === 'Partial' ? 50 : 20), fullMark: 100 },
+    { subject: 'Protocol', A: isPending ? 0 : (scan.protocolVersion === 'TLSv1.3' ? 100 : 70), fullMark: 100 },
+    { subject: 'Key Exchange', A: isPending ? 0 : (scan.keyExchange?.toLowerCase().includes('ml-kem') ? 100 : scan.keyExchange?.toLowerCase().includes('hybrid') ? 90 : 70), fullMark: 100 },
+    { subject: 'Cipher Strength', A: isPending ? 0 : Math.min(100, (scan.score || 70) + 10), fullMark: 100 },
+    { subject: 'Certificate', A: isPending ? 0 : (details?.cert?.issuer ? 95 : 50), fullMark: 100 },
+    { subject: 'PQC Readiness', A: isPending ? 0 : (scan.pqcStatus === 'Ready' ? 100 : scan.pqcStatus === 'Partial' ? 60 : 30), fullMark: 100 },
   ];
 
   return (
