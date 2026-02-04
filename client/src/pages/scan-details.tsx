@@ -178,7 +178,15 @@ export default function ScanDetails() {
                 <div className="space-y-1 sm:col-span-2">
                    <label className="text-xs text-muted-foreground uppercase font-semibold">Key Exchange / KEM</label>
                    <div className="text-sm font-mono text-foreground flex flex-col gap-1">
-                     <span className="text-primary">{scan.keyExchange}</span>
+                     <span className="text-primary flex items-center gap-2">
+                       {scan.keyExchange}
+                       {scan.keyExchange?.toLowerCase().includes('ml-kem') && (
+                         <Badge variant="outline" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px]">ML-KEM SUPPORTED</Badge>
+                       )}
+                       {scan.keyExchange?.toLowerCase().includes('hybrid') && (
+                         <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20 text-[10px]">HYBRID ENABLED</Badge>
+                       )}
+                     </span>
                      {details?.kem && details.kem !== scan.keyExchange && details.kem !== "Unknown" && (
                        <span className="text-xs text-muted-foreground italic">
                          Mechanism: {details.kem}

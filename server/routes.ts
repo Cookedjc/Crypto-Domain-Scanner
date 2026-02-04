@@ -150,17 +150,18 @@ function calculateScore(details: any): { score: number, grade: string, pqcStatus
     score += 20;
     explanation.push("Uses Forward Secrecy (ECDHE/DHE) (+20)");
     
-    // PQC Check (Simple Heuristic)
-    // Currently, standard TLS doesn't show Kyber/Dilithium in standard cipher names easily without extensions
-    // But we can check for curve types if available in ephemeral key info
-    if (details.ephemeral) {
+    // Hybrid/ML-KEM Bonus
+    const keyExchange = (details.kem || "").toLowerCase();
+    if (keyExchange.includes("hybrid") || keyExchange.includes("ml-kem") || keyExchange.includes("kyber")) {
+      score += 40;
+      explanation.push("Uses Post-Quantum Hybrid/ML-KEM Key Exchange (+40)");
+      pqcStatus = "Ready";
+    } else if (details.ephemeral) {
       if (details.ephemeral.type === 'ECDH' && ['X25519', 'P-256', 'P-384'].includes(details.ephemeral.name)) {
         pqcStatus = "Partial"; // Modern curves are better but not Quantum Safe
         explanation.push(`Curve: ${details.ephemeral.name}`);
       }
     }
-    
-    // If it were a hybrid PQC, it might show up in protocol extensions or specialized names (rare in standard node tls)
   } else {
     score -= 20;
     explanation.push("No Forward Secrecy (RSA Key Exchange) (-20)");
