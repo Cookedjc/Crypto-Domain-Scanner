@@ -77,12 +77,13 @@ async function performScan(host: string, port: number) {
  * using OpenSSL s_client directly for detailed protocol information.
  */
 async function getKEMInfo(host: string, port: number): Promise<{ kem: string, raw: string, error?: string, command: string }> {
-  const command = `openssl s_client -connect ${host}:${port} </dev/null 2>&1`;
+  const command = `openssl s_client -connect ${host}:${port} -tls1_3 </dev/null 2>&1`;
   try {
-    const { stdout } = await execPromise(`${command} | grep "Key exchange"`);
+    const { stdout } = await execPromise(`${command} | grep -i key`);
     
     if (stdout) {
-      const match = stdout.match(/Key exchange:\s+(.+)/i);
+      // Look for "Key exchange" or "Key Encapsulation Mechanism" etc
+      const match = stdout.match(/(?:Key exchange|Key):\s+(.+)/i);
       if (match && match[1]) {
         return { kem: match[1].trim(), raw: stdout, command };
       }
