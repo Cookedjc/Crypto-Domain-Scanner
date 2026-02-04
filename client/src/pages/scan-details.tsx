@@ -249,10 +249,16 @@ export default function ScanDetails() {
 
             <Card className="border-border/50">
               <CardHeader>
-                <CardTitle className="text-sm font-mono text-muted-foreground uppercase">Recommendations</CardTitle>
+                <CardTitle className="text-sm font-mono text-muted-foreground uppercase tracking-wider">Recommendations</CardTitle>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-4">
+                  {scan.keyExchange?.toLowerCase().includes('hybrid') && (
+                    <li className="flex gap-3 text-sm p-3 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                      <div className="w-6 h-6 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0 text-emerald-500 font-bold text-xs">PQC</div>
+                      <span className="text-emerald-400 font-medium">Hybrid PQC is enabled. This connection is resistant to quantum computing attacks.</span>
+                    </li>
+                  )}
                   <li className="flex gap-3 text-sm">
                     <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-xs">1</div>
                     <span className="text-muted-foreground">Disable older TLS 1.0/1.1 protocols immediately.</span>
@@ -261,10 +267,12 @@ export default function ScanDetails() {
                     <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-xs">2</div>
                     <span className="text-muted-foreground">Implement HSTS with long duration.</span>
                   </li>
-                  <li className="flex gap-3 text-sm">
-                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-xs">3</div>
-                    <span className="text-muted-foreground">Prepare for PQC by testing hybrid key exchanges.</span>
-                  </li>
+                  {!scan.keyExchange?.toLowerCase().includes('hybrid') && (
+                    <li className="flex gap-3 text-sm">
+                      <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center shrink-0 text-primary font-bold text-xs">3</div>
+                      <span className="text-muted-foreground">Prepare for PQC by testing hybrid key exchanges.</span>
+                    </li>
+                  )}
                 </ul>
               </CardContent>
             </Card>
