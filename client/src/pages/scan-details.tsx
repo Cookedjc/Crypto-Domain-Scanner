@@ -215,18 +215,32 @@ export default function ScanDetails() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground">OpenSSL Command Executed</h4>
-                  <code className="block p-3 bg-black/60 rounded-lg border border-border/50 font-mono text-xs text-emerald-400">
-                    $ {details?.command || "openssl s_client -connect " + scan.domain + ":" + scan.port + " -tls1_3"}
-                  </code>
-                </div>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Key Exchange Mechanism</h4>
+                      <p className="font-mono text-xs text-emerald-500">{scan.keyExchange || "Unknown"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Detection Method</h4>
+                      <p className="font-mono text-xs text-primary">OpenSSL s_client Probe (v3.0+)</p>
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Cipher Suite</h4>
+                      <p className="font-mono text-xs text-emerald-500">{scan.cipherName || "Unknown"}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">TLS Version</h4>
+                      <p className="font-mono text-xs text-blue-400">{scan.protocolVersion || "Unknown"}</p>
+                    </div>
+                  </div>
 
-                <div className="space-y-2">
-                  <h4 className="text-sm font-semibold text-muted-foreground">Cryptographic Negotiation (Key Share / Groups)</h4>
-                  <pre className="block p-4 bg-black/40 rounded-lg border border-border/50 font-mono text-[10px] text-emerald-500/90 overflow-x-auto max-h-[300px] overflow-y-auto">
-                    {scan.rawOutput || "No negotiation details captured."}
-                  </pre>
+                  <div className="space-y-2 pt-2 border-t border-border/30">
+                    <h4 className="text-sm font-semibold text-muted-foreground">Cryptographic Negotiation (Key Share / Groups)</h4>
+                    <pre className="block p-4 bg-black/40 rounded-lg border border-border/50 font-mono text-[10px] text-emerald-500/90 overflow-x-auto max-h-[300px] overflow-y-auto">
+                      {scan.rawOutput || "No negotiation details captured."}
+                    </pre>
+                  </div>
                 </div>
 
                 {details?.error && (
