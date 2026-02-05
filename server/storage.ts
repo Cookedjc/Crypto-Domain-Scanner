@@ -2,12 +2,17 @@ import { db } from "./db";
 import { 
   scans, cbomFiles, cbomComponents, 
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
+  users, rolePermissions, authConfig,
   type InsertScan, type Scan, 
   type CbomFile, type CbomComponent, type InsertCbomFile, type InsertCbomComponent,
   type ScriptVariable, type InsertScriptVariable,
   type ScheduledScript, type InsertScheduledScript,
   type ScriptSchedule, type InsertScriptSchedule,
-  type ScriptExecution, type InsertScriptExecution
+  type ScriptExecution, type InsertScriptExecution,
+  type User, type InsertUser,
+  type RolePermission, type InsertRolePermission,
+  type AuthConfig, type InsertAuthConfig,
+  USER_TYPES, MENU_ITEMS
 } from "@shared/schema";
 import { eq, desc, and, inArray, lte, isNull, or } from "drizzle-orm";
 
@@ -58,6 +63,28 @@ export interface IStorage {
   getExecutions(limit?: number): Promise<ScriptExecution[]>;
   getExecutionsByScript(scriptId: number, limit?: number): Promise<ScriptExecution[]>;
   updateExecution(id: number, data: Partial<InsertScriptExecution>): Promise<void>;
+  
+  // User Management
+  createUser(user: InsertUser): Promise<User>;
+  getUsers(): Promise<User[]>;
+  getUser(id: number): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: number): Promise<void>;
+  
+  // Role Permissions (RBAC)
+  getRolePermissions(): Promise<RolePermission[]>;
+  getRolePermissionsByType(userType: string): Promise<RolePermission[]>;
+  upsertRolePermission(permission: InsertRolePermission): Promise<RolePermission>;
+  initializeDefaultPermissions(): Promise<void>;
+  
+  // Auth Configuration
+  createAuthConfig(config: InsertAuthConfig): Promise<AuthConfig>;
+  getAuthConfigs(): Promise<AuthConfig[]>;
+  getAuthConfig(id: number): Promise<AuthConfig | undefined>;
+  updateAuthConfig(id: number, data: Partial<InsertAuthConfig>): Promise<AuthConfig | undefined>;
+  deleteAuthConfig(id: number): Promise<void>;
+  getDefaultAuthConfig(): Promise<AuthConfig | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -249,6 +276,148 @@ export class DatabaseStorage implements IStorage {
 
   async updateExecution(id: number, data: Partial<InsertScriptExecution>): Promise<void> {
     await db.update(scriptExecutions).set(data).where(eq(scriptExecutions.id, id));
+  }
+
+  // User Management
+  async createUser(user: InsertUser): Promise<User> {
+    const [created] = await db.insert(users).values(user).returning();
+    return created;
+  }
+
+  async getUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(desc(users.createdAt));
+  }
+
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+
+  async updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined> {
+    const [updated] = await db.update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    await db.delete(users).where(eq(users.id, id));
+  }
+
+  // Role Permissions (RBAC)
+  async getRolePermissions(): Promise<RolePermission[]> {
+    return await db.select().from(rolePermissions);
+  }
+
+  async getRolePermissionsByType(userType: string): Promise<RolePermission[]> {
+    return await db.select().from(rolePermissions).where(eq(rolePermissions.userType, userType));
+  }
+
+  async upsertRolePermission(permission: InsertRolePermission): Promise<RolePermission> {
+    const existing = await db.select().from(rolePermissions)
+      .where(and(
+        eq(rolePermissions.userType, permission.userType),
+        eq(rolePermissions.menuItem, permission.menuItem)
+      ));
+    
+    if (existing.length > 0) {
+      const [updated] = await db.update(rolePermissions)
+        .set({ ...permission, updatedAt: new Date() })
+        .where(eq(rolePermissions.id, existing[0].id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db.insert(rolePermissions).values(permission).returning();
+      return created;
+    }
+  }
+
+  async initializeDefaultPermissions(): Promise<void> {
+    const existing = await this.getRolePermissions();
+    if (existing.length > 0) return;
+
+    const defaultPermissions: InsertRolePermission[] = [];
+    
+    for (const userType of USER_TYPES) {
+      for (const menuItem of MENU_ITEMS) {
+        let canView = true;
+        let canEdit = false;
+        let canDelete = false;
+        
+        if (userType === 'admin') {
+          canEdit = true;
+          canDelete = true;
+        } else if (userType === 'superuser') {
+          canEdit = true;
+          canDelete = true;
+          if (menuItem === 'settings') {
+            canEdit = false;
+            canDelete = false;
+          }
+        } else if (userType === 'user') {
+          canEdit = menuItem !== 'settings';
+          canDelete = false;
+        } else if (userType === 'viewer') {
+          canView = menuItem !== 'settings';
+          canEdit = false;
+          canDelete = false;
+        }
+        
+        defaultPermissions.push({
+          userType,
+          menuItem,
+          canView,
+          canEdit,
+          canDelete,
+        });
+      }
+    }
+    
+    await db.insert(rolePermissions).values(defaultPermissions);
+  }
+
+  // Auth Configuration
+  async createAuthConfig(config: InsertAuthConfig): Promise<AuthConfig> {
+    if (config.isDefault) {
+      await db.update(authConfig).set({ isDefault: false });
+    }
+    const [created] = await db.insert(authConfig).values(config).returning();
+    return created;
+  }
+
+  async getAuthConfigs(): Promise<AuthConfig[]> {
+    return await db.select().from(authConfig).orderBy(desc(authConfig.createdAt));
+  }
+
+  async getAuthConfig(id: number): Promise<AuthConfig | undefined> {
+    const [config] = await db.select().from(authConfig).where(eq(authConfig.id, id));
+    return config;
+  }
+
+  async updateAuthConfig(id: number, data: Partial<InsertAuthConfig>): Promise<AuthConfig | undefined> {
+    if (data.isDefault) {
+      await db.update(authConfig).set({ isDefault: false });
+    }
+    const [updated] = await db.update(authConfig)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(authConfig.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAuthConfig(id: number): Promise<void> {
+    await db.delete(authConfig).where(eq(authConfig.id, id));
+  }
+
+  async getDefaultAuthConfig(): Promise<AuthConfig | undefined> {
+    const [config] = await db.select().from(authConfig).where(eq(authConfig.isDefault, true));
+    return config;
   }
 }
 
