@@ -9,8 +9,10 @@ import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { 
   cbomUploadSchema, cbomDeduplicateSchema, type InsertCbomComponent,
-  createScriptSchema, createVariableSchema, createScheduleSchema
+  createScriptSchema, updateScriptSchema, createVariableSchema, createScheduleSchema
 } from "@shared/schema";
+import fs from "fs/promises";
+import path from "path";
 
 const execPromise = promisify(exec);
 
@@ -475,6 +477,44 @@ export async function registerRoutes(
   });
 
   // === Scheduled Scripts Routes ===
+  
+  // List directories for output path selector (BEFORE :id routes)
+  // Restricted to project directory for security
+  const PROJECT_ROOT = process.cwd();
+  
+  app.get("/api/scripts/directories", async (req, res) => {
+    try {
+      let requestedPath = req.query.path as string || '.';
+      
+      // Resolve to absolute path and ensure it's within project root
+      const absolutePath = path.resolve(PROJECT_ROOT, requestedPath);
+      
+      // Security: Block directory traversal outside project root
+      if (!absolutePath.startsWith(PROJECT_ROOT)) {
+        return res.json({ currentPath: '.', directories: [], canGoUp: false });
+      }
+      
+      // Convert back to relative path for display
+      const relativePath = path.relative(PROJECT_ROOT, absolutePath) || '.';
+      
+      const entries = await fs.readdir(absolutePath, { withFileTypes: true });
+      const directories = entries
+        .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules')
+        .map(entry => ({
+          name: entry.name,
+          path: relativePath === '.' ? entry.name : path.join(relativePath, entry.name),
+        }));
+      
+      res.json({ 
+        currentPath: relativePath,
+        directories,
+        canGoUp: relativePath !== '.',
+      });
+    } catch (err) {
+      res.json({ currentPath: '.', directories: [], canGoUp: false });
+    }
+  });
+  
   app.get(scriptsApi.scripts.list.path, async (req, res) => {
     const scripts = await storage.getScripts();
     res.json(scripts);
@@ -502,13 +542,61 @@ export async function registerRoutes(
   });
 
   app.patch(scriptsApi.scripts.update.path, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const existing = await storage.getScript(id);
+      if (!existing) {
+        return res.status(404).json({ message: "Script not found" });
+      }
+      const input = updateScriptSchema.parse(req.body);
+      const updated = await storage.updateScript(id, input);
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to update script" });
+    }
+  });
+
+  // Test script (run immediately and return result)
+  app.post("/api/scripts/:id/test", async (req, res) => {
     const id = Number(req.params.id);
-    const existing = await storage.getScript(id);
-    if (!existing) {
+    const script = await storage.getScript(id);
+    if (!script) {
       return res.status(404).json({ message: "Script not found" });
     }
-    const updated = await storage.updateScript(id, req.body);
-    res.json(updated);
+
+    try {
+      // Get all variables to substitute into command
+      const variables = await storage.getVariables();
+      let processedCommand = script.command;
+      
+      // Replace ${VAR_NAME} patterns with actual values
+      for (const variable of variables) {
+        const pattern = new RegExp(`\\$\\{${variable.name}\\}`, 'g');
+        processedCommand = processedCommand.replace(pattern, variable.value);
+      }
+
+      const { stdout, stderr } = await execPromise(processedCommand, {
+        timeout: 60000, // 1 minute timeout for test
+        maxBuffer: 5 * 1024 * 1024, // 5MB buffer
+      });
+
+      res.json({
+        success: true,
+        output: stdout,
+        errorOutput: stderr || null,
+        exitCode: 0,
+      });
+    } catch (err: any) {
+      res.json({
+        success: false,
+        output: err.stdout || null,
+        errorOutput: err.stderr || err.message,
+        exitCode: err.code || 1,
+      });
+    }
   });
 
   app.delete(scriptsApi.scripts.delete.path, async (req, res) => {
@@ -536,8 +624,8 @@ export async function registerRoutes(
       triggeredBy: "manual",
     });
 
-    // Execute script in background
-    executeScript(script.command, execution.id);
+    // Execute script in background with output path
+    executeScript(script.command, execution.id, script.outputPath);
 
     res.json(execution);
   });
@@ -622,7 +710,7 @@ export async function registerRoutes(
 }
 
 // Helper function to execute a script command
-async function executeScript(command: string, executionId: number) {
+async function executeScript(command: string, executionId: number, outputPath?: string | null) {
   try {
     // Get all variables to substitute into command
     const variables = await storage.getVariables();
@@ -638,6 +726,21 @@ async function executeScript(command: string, executionId: number) {
       timeout: 300000, // 5 minute timeout
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer
     });
+
+    // Write output to file if outputPath is specified
+    if (outputPath && stdout) {
+      try {
+        // Create directory if it doesn't exist
+        await fs.mkdir(outputPath, { recursive: true });
+        
+        // Create filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const filename = path.join(outputPath, `script_output_${executionId}_${timestamp}.txt`);
+        await fs.writeFile(filename, stdout, 'utf-8');
+      } catch (writeErr) {
+        console.error('Failed to write output to file:', writeErr);
+      }
+    }
 
     await storage.updateExecution(executionId, {
       status: "success",
@@ -745,8 +848,8 @@ function startScheduler() {
           triggeredBy: "scheduler",
         });
         
-        // Execute script
-        executeScript(script.command, execution.id);
+        // Execute script with output path
+        executeScript(script.command, execution.id, script.outputPath);
         
         // Update schedule with next run time
         const nextRun = calculateNextRun(schedule);

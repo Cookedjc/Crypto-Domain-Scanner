@@ -15,7 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { 
   Plus, Play, Trash2, Clock, Variable, Terminal, History, 
-  Calendar, CheckCircle, XCircle, Loader2, AlertCircle, Edit2
+  Calendar, CheckCircle, XCircle, Loader2, AlertCircle, Edit2,
+  FlaskConical, FolderOpen, ChevronUp, Folder
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import type { ScheduledScript, ScriptVariable, ScriptSchedule, ScriptExecution } from "@shared/schema";
@@ -76,13 +77,41 @@ export default function ScriptsPage() {
   );
 }
 
+interface DirectoryInfo {
+  currentPath: string;
+  directories: { name: string; path: string }[];
+  canGoUp: boolean;
+}
+
+interface TestResult {
+  success: boolean;
+  output: string | null;
+  errorOutput: string | null;
+  exitCode: number;
+}
+
 function ScriptsTab() {
   const { toast } = useToast();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [newScript, setNewScript] = useState({ name: "", description: "", command: "" });
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isTestOpen, setIsTestOpen] = useState(false);
+  const [isDirOpen, setIsDirOpen] = useState(false);
+  const [dirPath, setDirPath] = useState(".");
+  const [newScript, setNewScript] = useState({ name: "", description: "", command: "", outputPath: "" });
+  const [editScript, setEditScript] = useState<ScheduledScript | null>(null);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
 
   const { data: scripts, isLoading } = useQuery<ScheduledScript[]>({
     queryKey: ["/api/scripts"],
+  });
+
+  const { data: directories } = useQuery<DirectoryInfo>({
+    queryKey: ["/api/scripts/directories", dirPath],
+    queryFn: async () => {
+      const res = await fetch(`/api/scripts/directories?path=${encodeURIComponent(dirPath)}`);
+      return res.json();
+    },
+    enabled: isDirOpen,
   });
 
   const createMutation = useMutation({
@@ -92,11 +121,26 @@ function ScriptsTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scripts"] });
       setIsCreateOpen(false);
-      setNewScript({ name: "", description: "", command: "" });
+      setNewScript({ name: "", description: "", command: "", outputPath: "" });
       toast({ title: "Script created successfully" });
     },
     onError: (err: any) => {
       toast({ title: "Failed to create script", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: Partial<ScheduledScript> }) => {
+      return apiRequest("PATCH", `/api/scripts/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/scripts"] });
+      setIsEditOpen(false);
+      setEditScript(null);
+      toast({ title: "Script updated successfully" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to update script", description: err.message, variant: "destructive" });
     },
   });
 
@@ -123,6 +167,20 @@ function ScriptsTab() {
     },
   });
 
+  const testMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/scripts/${id}/test`);
+      return res.json();
+    },
+    onSuccess: (result: TestResult) => {
+      setTestResult(result);
+      setIsTestOpen(true);
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to test script", description: err.message, variant: "destructive" });
+    },
+  });
+
   const toggleMutation = useMutation({
     mutationFn: async ({ id, isEnabled }: { id: number; isEnabled: boolean }) => {
       return apiRequest("PATCH", `/api/scripts/${id}`, { isEnabled });
@@ -131,6 +189,21 @@ function ScriptsTab() {
       queryClient.invalidateQueries({ queryKey: ["/api/scripts"] });
     },
   });
+
+  const openEditDialog = (script: ScheduledScript) => {
+    setEditScript({ ...script });
+    setIsEditOpen(true);
+  };
+
+  const selectDirectory = (path: string) => {
+    if (editScript) {
+      setEditScript({ ...editScript, outputPath: path });
+    } else {
+      setNewScript({ ...newScript, outputPath: path });
+    }
+    setIsDirOpen(false);
+    setDirPath(".");
+  };
 
   return (
     <div className="space-y-4">
@@ -179,6 +252,29 @@ function ScriptsTab() {
                   Use {"${VARIABLE_NAME}"} to reference stored variables
                 </p>
               </div>
+              <div>
+                <Label>Output Directory (optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={newScript.outputPath}
+                    onChange={(e) => setNewScript({ ...newScript, outputPath: e.target.value })}
+                    placeholder="./script-outputs"
+                    data-testid="input-script-output-path"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setIsDirOpen(true)}
+                    data-testid="button-browse-dir"
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Script output will be saved to this directory
+                </p>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
@@ -194,6 +290,195 @@ function ScriptsTab() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Edit Script Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={(open) => { setIsEditOpen(open); if (!open) setEditScript(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Script</DialogTitle>
+          </DialogHeader>
+          {editScript && (
+            <div className="space-y-4">
+              <div>
+                <Label>Name</Label>
+                <Input
+                  value={editScript.name}
+                  onChange={(e) => setEditScript({ ...editScript, name: e.target.value })}
+                  data-testid="input-edit-script-name"
+                />
+              </div>
+              <div>
+                <Label>Description (optional)</Label>
+                <Input
+                  value={editScript.description || ""}
+                  onChange={(e) => setEditScript({ ...editScript, description: e.target.value })}
+                  data-testid="input-edit-script-description"
+                />
+              </div>
+              <div>
+                <Label>Command</Label>
+                <Textarea
+                  value={editScript.command}
+                  onChange={(e) => setEditScript({ ...editScript, command: e.target.value })}
+                  className="font-mono min-h-32"
+                  data-testid="input-edit-script-command"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use {"${VARIABLE_NAME}"} to reference stored variables
+                </p>
+              </div>
+              <div>
+                <Label>Output Directory (optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={editScript.outputPath || ""}
+                    onChange={(e) => setEditScript({ ...editScript, outputPath: e.target.value })}
+                    placeholder="./script-outputs"
+                    data-testid="input-edit-script-output-path"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setIsDirOpen(true)}
+                    data-testid="button-edit-browse-dir"
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Script output will be saved to this directory
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={() => editScript && updateMutation.mutate({ 
+                id: editScript.id, 
+                data: { 
+                  name: editScript.name, 
+                  description: editScript.description, 
+                  command: editScript.command,
+                  outputPath: editScript.outputPath || null,
+                }
+              })}
+              disabled={!editScript?.name || !editScript?.command || updateMutation.isPending}
+              data-testid="button-update-script"
+            >
+              {updateMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Directory Selector Dialog */}
+      <Dialog open={isDirOpen} onOpenChange={setIsDirOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Select Output Directory</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+              <FolderOpen className="w-4 h-4" />
+              <span className="font-mono truncate">{directories?.currentPath || "."}</span>
+            </div>
+            {directories?.canGoUp && (
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                onClick={() => {
+                  const parts = dirPath.split('/');
+                  parts.pop();
+                  setDirPath(parts.join('/') || '.');
+                }}
+                data-testid="button-dir-up"
+              >
+                <ChevronUp className="w-4 h-4 mr-2" />
+                Go up
+              </Button>
+            )}
+            <div className="max-h-60 overflow-y-auto space-y-1">
+              {directories?.directories.map((dir) => (
+                <div key={dir.path} className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    className="flex-1 justify-start"
+                    onClick={() => setDirPath(dir.path)}
+                    data-testid={`button-dir-${dir.name}`}
+                  >
+                    <Folder className="w-4 h-4 mr-2" />
+                    {dir.name}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => selectDirectory(dir.path)}
+                    data-testid={`button-select-dir-${dir.name}`}
+                  >
+                    Select
+                  </Button>
+                </div>
+              ))}
+              {directories?.directories.length === 0 && (
+                <p className="text-sm text-muted-foreground py-4 text-center">No subdirectories</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => selectDirectory(directories?.currentPath || ".")}>
+              Use Current Directory
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Test Result Dialog */}
+      <Dialog open={isTestOpen} onOpenChange={setIsTestOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {testResult?.success ? (
+                <CheckCircle className="w-5 h-5 text-emerald-500" />
+              ) : (
+                <XCircle className="w-5 h-5 text-rose-500" />
+              )}
+              Test Result
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <Badge variant={testResult?.success ? "default" : "destructive"}>
+                {testResult?.success ? "Success" : "Failed"}
+              </Badge>
+              <span className="text-sm text-muted-foreground">
+                Exit code: {testResult?.exitCode}
+              </span>
+            </div>
+            {testResult?.output && (
+              <div>
+                <Label className="text-sm">Output</Label>
+                <pre className="text-xs bg-muted/50 p-3 rounded overflow-x-auto font-mono max-h-60 overflow-y-auto mt-1">
+                  {testResult.output}
+                </pre>
+              </div>
+            )}
+            {testResult?.errorOutput && (
+              <div>
+                <Label className="text-sm text-rose-500">Error</Label>
+                <pre className="text-xs bg-rose-500/10 text-rose-500 p-3 rounded overflow-x-auto font-mono max-h-40 overflow-y-auto mt-1">
+                  {testResult.errorOutput}
+                </pre>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsTestOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
@@ -226,9 +511,17 @@ function ScriptsTab() {
                     <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto font-mono">
                       {script.command}
                     </pre>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Created {script.createdAt && formatDistanceToNow(new Date(script.createdAt), { addSuffix: true })}
-                    </p>
+                    <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                      <span>
+                        Created {script.createdAt && formatDistanceToNow(new Date(script.createdAt), { addSuffix: true })}
+                      </span>
+                      {script.outputPath && (
+                        <span className="flex items-center gap-1">
+                          <FolderOpen className="w-3 h-3" />
+                          {script.outputPath}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Switch
@@ -239,8 +532,19 @@ function ScriptsTab() {
                     <Button
                       size="icon"
                       variant="outline"
+                      onClick={() => testMutation.mutate(script.id)}
+                      disabled={testMutation.isPending}
+                      title="Test script"
+                      data-testid={`button-test-script-${script.id}`}
+                    >
+                      <FlaskConical className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="outline"
                       onClick={() => executeMutation.mutate(script.id)}
                       disabled={executeMutation.isPending}
+                      title="Run script"
                       data-testid={`button-run-script-${script.id}`}
                     >
                       <Play className="w-4 h-4" />
@@ -248,8 +552,18 @@ function ScriptsTab() {
                     <Button
                       size="icon"
                       variant="ghost"
+                      onClick={() => openEditDialog(script)}
+                      title="Edit script"
+                      data-testid={`button-edit-script-${script.id}`}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
                       className="text-rose-500 hover:text-rose-600"
                       onClick={() => deleteMutation.mutate(script.id)}
+                      title="Delete script"
                       data-testid={`button-delete-script-${script.id}`}
                     >
                       <Trash2 className="w-4 h-4" />

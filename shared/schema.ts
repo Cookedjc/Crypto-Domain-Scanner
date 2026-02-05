@@ -141,6 +141,7 @@ export const scheduledScripts = pgTable("scheduled_scripts", {
   name: text("name").notNull(),
   description: text("description"),
   command: text("command").notNull(),
+  outputPath: text("output_path"), // Directory path to write script results
   isEnabled: boolean("is_enabled").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -214,7 +215,16 @@ export const createScriptSchema = z.object({
   name: z.string().min(1, "Script name is required"),
   description: z.string().optional(),
   command: z.string().min(1, "Command is required"),
+  outputPath: z.string().optional(),
   isEnabled: z.boolean().default(true),
+});
+
+export const updateScriptSchema = z.object({
+  name: z.string().min(1, "Script name is required").optional(),
+  description: z.string().optional(),
+  command: z.string().min(1, "Command is required").optional(),
+  outputPath: z.string().nullable().optional(),
+  isEnabled: z.boolean().optional(),
 });
 
 export const createVariableSchema = z.object({
