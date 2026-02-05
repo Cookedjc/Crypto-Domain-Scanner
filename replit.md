@@ -6,6 +6,19 @@ CipherGuard is a Post-Quantum Cryptography (PQC) security analysis platform that
 
 The platform enables users to scan domains across multiple ports, optionally enumerate common subdomains, and view detailed reports on cryptographic posture including protocol versions, cipher strength, and quantum-resistance status.
 
+### CBOM Manager
+The platform includes a Cryptographic Bill of Materials (CBOM) Manager that allows teams to upload and analyze CycloneDX JSON format files. Features include:
+- Drag-and-drop file upload
+- Sortable and filterable component tables
+- Deduplication based on selected fields
+
+### Scripts Manager
+A comprehensive script scheduling system for automating REST API calls and CLI commands:
+- **Scripts**: Create bash commands or CLI scripts for REST API calls to third-party applications
+- **Variables**: Store tokenized access credentials (API keys, tokens) securely with ${VAR_NAME} substitution
+- **Schedules**: Configure scripts to run on a 24-hour clock, specific days of week, or specific dates
+- **Execution History**: View logs and results from script executions
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -41,11 +54,11 @@ Preferred communication style: Simple, everyday language.
 │   └── src/
 │       ├── components/   # UI components (shadcn + custom)
 │       ├── hooks/        # React Query hooks for API calls
-│       ├── pages/        # Route page components
+│       ├── pages/        # Route page components (dashboard, cbom, scripts)
 │       └── lib/          # Utilities and query client config
 ├── server/           # Express backend
 │   ├── index.ts      # Server entry point
-│   ├── routes.ts     # API route handlers
+│   ├── routes.ts     # API route handlers + scheduler
 │   ├── storage.ts    # Database access layer
 │   └── db.ts         # Database connection
 ├── shared/           # Shared code between client/server
@@ -53,6 +66,14 @@ Preferred communication style: Simple, everyday language.
 │   └── routes.ts     # API contract types
 └── migrations/       # Drizzle migration files
 ```
+
+### Database Tables
+- `scans`: TLS/SSL scan results
+- `cbom_files`, `cbom_components`: CBOM file and component storage
+- `scheduled_scripts`: Script definitions (name, command, enabled status)
+- `script_variables`: Stored credentials/tokens for script substitution
+- `script_schedules`: Schedule configurations (times, days, dates)
+- `script_executions`: Execution history and logs
 
 ### API Contract Pattern
 The `shared/routes.ts` file defines typed API contracts using Zod schemas, ensuring type safety between frontend and backend. This includes request/response schemas and URL builders.

@@ -461,6 +461,19 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
+  // === Script Schedules Routes (BEFORE :id routes to avoid matching issues) ===
+  app.get(scriptsApi.schedules.list.path, async (req, res) => {
+    const schedules = await storage.getSchedules();
+    res.json(schedules);
+  });
+
+  // === Script Executions Routes (BEFORE :id routes to avoid matching issues) ===
+  app.get(scriptsApi.executions.list.path, async (req, res) => {
+    const limit = req.query.limit ? Number(req.query.limit) : 100;
+    const executions = await storage.getExecutions(limit);
+    res.json(executions);
+  });
+
   // === Scheduled Scripts Routes ===
   app.get(scriptsApi.scripts.list.path, async (req, res) => {
     const scripts = await storage.getScripts();
@@ -529,12 +542,7 @@ export async function registerRoutes(
     res.json(execution);
   });
 
-  // === Script Schedules Routes ===
-  app.get(scriptsApi.schedules.list.path, async (req, res) => {
-    const schedules = await storage.getSchedules();
-    res.json(schedules);
-  });
-
+  // === Script Schedules Routes (continued) ===
   app.get(scriptsApi.schedules.listByScript.path, async (req, res) => {
     const scriptId = Number(req.params.scriptId);
     const schedules = await storage.getSchedulesByScript(scriptId);
@@ -599,13 +607,7 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
-  // === Script Executions Routes ===
-  app.get(scriptsApi.executions.list.path, async (req, res) => {
-    const limit = req.query.limit ? Number(req.query.limit) : 100;
-    const executions = await storage.getExecutions(limit);
-    res.json(executions);
-  });
-
+  // === Script Executions Routes (continued) ===
   app.get(scriptsApi.executions.listByScript.path, async (req, res) => {
     const scriptId = Number(req.params.scriptId);
     const limit = req.query.limit ? Number(req.query.limit) : 50;
