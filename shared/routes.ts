@@ -2,7 +2,10 @@ import { z } from 'zod';
 import { 
   scans, insertScanSchema, scanRequestSchema, cbomFiles, cbomComponents,
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
-  createScriptSchema, createVariableSchema, createScheduleSchema
+  users, rolePermissions, authConfig,
+  createScriptSchema, createVariableSchema, createScheduleSchema,
+  createUserSchema, updateUserSchema, updateRolePermissionSchema,
+  createAuthConfigSchema, updateAuthConfigSchema
 } from './schema';
 
 export const errorSchemas = {
@@ -246,6 +249,121 @@ export const scriptsApi = {
       path: '/api/scripts/:scriptId/executions',
       responses: {
         200: z.array(z.custom<typeof scriptExecutions.$inferSelect>()),
+      },
+    },
+  },
+};
+
+// Settings API - User Management, RBAC, and Auth Configuration
+export const settingsApi = {
+  users: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/settings/users',
+      responses: {
+        200: z.array(z.custom<typeof users.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/settings/users/:id',
+      responses: {
+        200: z.custom<typeof users.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/settings/users',
+      input: createUserSchema,
+      responses: {
+        201: z.custom<typeof users.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/settings/users/:id',
+      input: updateUserSchema,
+      responses: {
+        200: z.custom<typeof users.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/settings/users/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  permissions: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/settings/permissions',
+      responses: {
+        200: z.array(z.custom<typeof rolePermissions.$inferSelect>()),
+      },
+    },
+    update: {
+      method: 'PUT' as const,
+      path: '/api/settings/permissions',
+      input: updateRolePermissionSchema,
+      responses: {
+        200: z.custom<typeof rolePermissions.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    initialize: {
+      method: 'POST' as const,
+      path: '/api/settings/permissions/initialize',
+      responses: {
+        200: z.object({ message: z.string() }),
+      },
+    },
+  },
+  authConfig: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/settings/auth',
+      responses: {
+        200: z.array(z.custom<typeof authConfig.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/settings/auth/:id',
+      responses: {
+        200: z.custom<typeof authConfig.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/settings/auth',
+      input: createAuthConfigSchema,
+      responses: {
+        201: z.custom<typeof authConfig.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/settings/auth/:id',
+      input: updateAuthConfigSchema,
+      responses: {
+        200: z.custom<typeof authConfig.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/settings/auth/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
       },
     },
   },

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api, cbomApi, scriptsApi, errorSchemas } from "@shared/routes";
+import { api, cbomApi, scriptsApi, settingsApi, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import tls from "tls";
 import dns from "dns/promises";
@@ -9,7 +9,9 @@ import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { 
   cbomUploadSchema, cbomDeduplicateSchema, type InsertCbomComponent,
-  createScriptSchema, updateScriptSchema, createVariableSchema, createScheduleSchema
+  createScriptSchema, updateScriptSchema, createVariableSchema, createScheduleSchema,
+  createUserSchema, updateUserSchema, updateRolePermissionSchema,
+  createAuthConfigSchema, updateAuthConfigSchema
 } from "@shared/schema";
 import fs from "fs/promises";
 import path from "path";
@@ -701,6 +703,146 @@ export async function registerRoutes(
     const limit = req.query.limit ? Number(req.query.limit) : 50;
     const executions = await storage.getExecutionsByScript(scriptId, limit);
     res.json(executions);
+  });
+
+  // === Settings API Routes ===
+  
+  // Initialize default permissions on startup
+  storage.initializeDefaultPermissions().catch(console.error);
+  
+  // User Management Routes
+  app.get(settingsApi.users.list.path, async (req, res) => {
+    const users = await storage.getUsers();
+    res.json(users);
+  });
+
+  app.get(settingsApi.users.get.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const user = await storage.getUser(id);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    res.json(user);
+  });
+
+  app.post(settingsApi.users.create.path, async (req, res) => {
+    const parsed = createUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    
+    const existing = await storage.getUserByEmail(parsed.data.email);
+    if (existing) {
+      return res.status(400).json({ message: "Email already exists" });
+    }
+    
+    const user = await storage.createUser(parsed.data);
+    res.status(201).json(user);
+  });
+
+  app.patch(settingsApi.users.update.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const parsed = updateUserSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    
+    const existing = await storage.getUser(id);
+    if (!existing) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    
+    if (parsed.data.email && parsed.data.email !== existing.email) {
+      const emailExists = await storage.getUserByEmail(parsed.data.email);
+      if (emailExists) {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+    }
+    
+    const user = await storage.updateUser(id, parsed.data);
+    res.json(user);
+  });
+
+  app.delete(settingsApi.users.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getUser(id);
+    if (!existing) {
+      return res.status(404).json({ message: "User not found" });
+    }
+    await storage.deleteUser(id);
+    res.status(204).end();
+  });
+
+  // Role Permissions Routes
+  app.get(settingsApi.permissions.list.path, async (req, res) => {
+    const permissions = await storage.getRolePermissions();
+    res.json(permissions);
+  });
+
+  app.put(settingsApi.permissions.update.path, async (req, res) => {
+    const parsed = updateRolePermissionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    
+    const permission = await storage.upsertRolePermission(parsed.data);
+    res.json(permission);
+  });
+
+  app.post(settingsApi.permissions.initialize.path, async (req, res) => {
+    await storage.initializeDefaultPermissions();
+    res.json({ message: "Default permissions initialized" });
+  });
+
+  // Auth Configuration Routes
+  app.get(settingsApi.authConfig.list.path, async (req, res) => {
+    const configs = await storage.getAuthConfigs();
+    res.json(configs);
+  });
+
+  app.get(settingsApi.authConfig.get.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const config = await storage.getAuthConfig(id);
+    if (!config) {
+      return res.status(404).json({ message: "Auth configuration not found" });
+    }
+    res.json(config);
+  });
+
+  app.post(settingsApi.authConfig.create.path, async (req, res) => {
+    const parsed = createAuthConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    
+    const config = await storage.createAuthConfig(parsed.data);
+    res.status(201).json(config);
+  });
+
+  app.patch(settingsApi.authConfig.update.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const parsed = updateAuthConfigSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    
+    const existing = await storage.getAuthConfig(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Auth configuration not found" });
+    }
+    
+    const config = await storage.updateAuthConfig(id, parsed.data);
+    res.json(config);
+  });
+
+  app.delete(settingsApi.authConfig.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getAuthConfig(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Auth configuration not found" });
+    }
+    await storage.deleteAuthConfig(id);
+    res.status(204).end();
   });
 
   // Start scheduler
