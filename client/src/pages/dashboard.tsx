@@ -15,15 +15,22 @@ import {
   Search,
   Clock,
   Loader2,
-  Trash2
+  Trash2,
+  FileJson,
+  Terminal,
+  AlertTriangle,
+  CheckCircle2,
+  XCircle,
+  Package
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useState, useEffect } from "react";
-import type { Scan } from "@shared/schema";
-import { useQueryClient } from "@tanstack/react-query";
+import type { Scan, CbomComponent, ScriptExecution, ScheduledScript } from "@shared/schema";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 // Helper for status colors
 const getScoreColor = (score: number | null) => {
@@ -53,6 +60,20 @@ export default function Dashboard() {
   const { data: scans, isLoading } = useScans();
   const [search, setSearch] = useState("");
 
+  // CBOM data
+  const { data: cbomComponents } = useQuery<CbomComponent[]>({
+    queryKey: ["/api/cbom/components"],
+  });
+
+  // Scripts data
+  const { data: scripts } = useQuery<ScheduledScript[]>({
+    queryKey: ["/api/scripts"],
+  });
+
+  const { data: executions } = useQuery<ScriptExecution[]>({
+    queryKey: ["/api/scripts/executions"],
+  });
+
   // Auto-refresh when scans are in progress (missing protocol/score)
   const isScanning = scans?.some(s => !s.protocolVersion && s.score === null);
   
@@ -78,6 +99,16 @@ export default function Dashboard() {
     ? Math.round(completedScans.reduce((acc, s) => acc + (s.score || 0), 0) / completedScans.length)
     : 0;
   const criticalVulns = completedScans.filter(s => (s.score || 0) < 50).length;
+
+  // CBOM stats
+  const totalComponents = cbomComponents?.length || 0;
+  const algorithms = cbomComponents?.filter(c => c.componentType === "algorithm") || [];
+  const lowQuantumSecurity = algorithms.filter(a => a.nistQuantumSecurityLevel !== null && a.nistQuantumSecurityLevel < 3);
+
+  // Scripts stats
+  const totalScripts = scripts?.length || 0;
+  const recentExecutions = executions?.slice(0, 5) || [];
+  const failedExecutions = executions?.filter(e => e.status === "failed") || [];
 
   return (
     <Layout>
@@ -121,6 +152,153 @@ export default function Dashboard() {
           trend="Requires Attention"
           color="text-rose-500"
         />
+      </div>
+
+      {/* CBOM & Scripts Summary Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* CBOM Manager Summary */}
+        <Card className="border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <FileJson className="w-4 h-4 text-primary" />
+              CBOM Manager
+            </CardTitle>
+            <Link href="/cbom">
+              <Button variant="ghost" size="sm" data-testid="link-cbom-details">
+                View All <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <Package className="w-3 h-3" />
+                  Total Components
+                </div>
+                <div className="text-2xl font-mono font-bold">{totalComponents}</div>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <Lock className="w-3 h-3" />
+                  Algorithms
+                </div>
+                <div className="text-2xl font-mono font-bold">{algorithms.length}</div>
+              </div>
+            </div>
+            
+            {lowQuantumSecurity.length > 0 && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                <div className="flex items-center gap-2 text-amber-500 text-sm font-medium mb-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  Low Quantum Security Level
+                </div>
+                <div className="space-y-1">
+                  {lowQuantumSecurity.slice(0, 3).map((alg) => (
+                    <div key={alg.id} className="flex items-center justify-between text-xs">
+                      <span className="font-mono truncate">{alg.name}</span>
+                      <Badge variant="outline" className="text-amber-500 border-amber-500/30 text-[10px]">
+                        NIST Level {alg.nistQuantumSecurityLevel}
+                      </Badge>
+                    </div>
+                  ))}
+                  {lowQuantumSecurity.length > 3 && (
+                    <p className="text-xs text-muted-foreground">+{lowQuantumSecurity.length - 3} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {totalComponents === 0 && (
+              <div className="text-center py-4 text-muted-foreground text-sm">
+                <FileJson className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                No CBOM files uploaded yet
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Scripts Manager Summary */}
+        <Card className="border-border/50">
+          <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 pb-2">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Terminal className="w-4 h-4 text-primary" />
+              Scripts Manager
+            </CardTitle>
+            <Link href="/scripts">
+              <Button variant="ghost" size="sm" data-testid="link-scripts-details">
+                View All <ArrowRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <Terminal className="w-3 h-3" />
+                  Total Scripts
+                </div>
+                <div className="text-2xl font-mono font-bold">{totalScripts}</div>
+              </div>
+              <div className="bg-muted/30 rounded-lg p-3 border border-border/50">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <XCircle className="w-3 h-3 text-rose-500" />
+                  Failed Runs
+                </div>
+                <div className="text-2xl font-mono font-bold text-rose-500">{failedExecutions.length}</div>
+              </div>
+            </div>
+
+            {recentExecutions.length > 0 && (
+              <div className="space-y-2">
+                <div className="text-xs text-muted-foreground font-medium">Recent Executions</div>
+                <div className="space-y-1">
+                  {recentExecutions.map((exec) => {
+                    const script = scripts?.find(s => s.id === exec.scriptId);
+                    const isFailed = exec.status === "failed";
+                    return (
+                      <div 
+                        key={exec.id} 
+                        className={`flex items-center justify-between p-2 rounded-lg text-xs ${
+                          isFailed 
+                            ? "bg-rose-500/10 border border-rose-500/30" 
+                            : "bg-muted/30 border border-border/50"
+                        }`}
+                        data-testid={`execution-row-${exec.id}`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          {isFailed ? (
+                            <XCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+                          ) : (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                          )}
+                          <span className="font-medium truncate">{script?.name || `Script #${exec.scriptId}`}</span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {isFailed && exec.exitCode !== null && (
+                            <Badge variant="outline" className="text-rose-500 border-rose-500/30 font-mono text-[10px]">
+                              EXIT {exec.exitCode}
+                            </Badge>
+                          )}
+                          <span className="text-muted-foreground">
+                            {exec.startedAt ? formatDistanceToNow(new Date(exec.startedAt), { addSuffix: true }) : ""}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {recentExecutions.length === 0 && totalScripts === 0 && (
+              <div className="text-center py-4 text-muted-foreground text-sm">
+                <Terminal className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                No scripts configured yet
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Scans List Section */}
