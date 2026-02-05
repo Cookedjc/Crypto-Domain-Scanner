@@ -123,3 +123,116 @@ export type InsertCbomFile = {
 };
 export type CbomComponent = typeof cbomComponents.$inferSelect;
 export type InsertCbomComponent = typeof cbomComponents.$inferInsert;
+
+// Script Variables - stored credentials/tokens that can be used by scripts
+export const scriptVariables = pgTable("script_variables", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  value: text("value").notNull(),
+  description: text("description"),
+  isSecret: boolean("is_secret").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Scheduled Scripts - bash commands or CLI scripts
+export const scheduledScripts = pgTable("scheduled_scripts", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  command: text("command").notNull(),
+  isEnabled: boolean("is_enabled").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Script Schedules - when scripts should run
+export const scriptSchedules = pgTable("script_schedules", {
+  id: serial("id").primaryKey(),
+  scriptId: integer("script_id").notNull(),
+  scheduleType: text("schedule_type").notNull(), // "daily", "specific_times", "specific_date"
+  times: text("times").array(), // Array of times in HH:MM format (24-hour)
+  specificDates: text("specific_dates").array(), // Array of dates in YYYY-MM-DD format
+  daysOfWeek: integer("days_of_week").array(), // 0-6 for Sunday-Saturday
+  isEnabled: boolean("is_enabled").default(true),
+  lastRun: timestamp("last_run"),
+  nextRun: timestamp("next_run"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Script Executions - execution history/logs
+export const scriptExecutions = pgTable("script_executions", {
+  id: serial("id").primaryKey(),
+  scriptId: integer("script_id").notNull(),
+  scheduleId: integer("schedule_id"),
+  status: text("status").notNull(), // "running", "success", "failed", "timeout"
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  output: text("output"),
+  errorOutput: text("error_output"),
+  exitCode: integer("exit_code"),
+  triggeredBy: text("triggered_by").default("scheduler"), // "scheduler", "manual"
+});
+
+// Insert schemas
+export const insertScriptVariableSchema = createInsertSchema(scriptVariables).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertScheduledScriptSchema = createInsertSchema(scheduledScripts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertScriptScheduleSchema = createInsertSchema(scriptSchedules).omit({
+  id: true,
+  createdAt: true,
+  lastRun: true,
+  nextRun: true,
+});
+
+export const insertScriptExecutionSchema = createInsertSchema(scriptExecutions).omit({
+  id: true,
+  startedAt: true,
+});
+
+// Types
+export type ScriptVariable = typeof scriptVariables.$inferSelect;
+export type InsertScriptVariable = typeof scriptVariables.$inferInsert;
+export type ScheduledScript = typeof scheduledScripts.$inferSelect;
+export type InsertScheduledScript = typeof scheduledScripts.$inferInsert;
+export type ScriptSchedule = typeof scriptSchedules.$inferSelect;
+export type InsertScriptSchedule = typeof scriptSchedules.$inferInsert;
+export type ScriptExecution = typeof scriptExecutions.$inferSelect;
+export type InsertScriptExecution = typeof scriptExecutions.$inferInsert;
+
+// API validation schemas
+export const createScriptSchema = z.object({
+  name: z.string().min(1, "Script name is required"),
+  description: z.string().optional(),
+  command: z.string().min(1, "Command is required"),
+  isEnabled: z.boolean().default(true),
+});
+
+export const createVariableSchema = z.object({
+  name: z.string().min(1, "Variable name is required").regex(/^[A-Z_][A-Z0-9_]*$/i, "Variable name must be alphanumeric with underscores"),
+  value: z.string().min(1, "Value is required"),
+  description: z.string().optional(),
+  isSecret: z.boolean().default(true),
+});
+
+export const createScheduleSchema = z.object({
+  scriptId: z.number(),
+  scheduleType: z.enum(["daily", "specific_times", "specific_date", "days_of_week"]),
+  times: z.array(z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Time must be in HH:MM format")).optional(),
+  specificDates: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format")).optional(),
+  daysOfWeek: z.array(z.number().min(0).max(6)).optional(),
+  isEnabled: z.boolean().default(true),
+});
+
+export type CreateScriptRequest = z.infer<typeof createScriptSchema>;
+export type CreateVariableRequest = z.infer<typeof createVariableSchema>;
+export type CreateScheduleRequest = z.infer<typeof createScheduleSchema>;
