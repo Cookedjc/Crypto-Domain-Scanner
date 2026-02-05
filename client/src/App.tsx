@@ -7,6 +7,7 @@ import Dashboard from "@/pages/dashboard";
 import ScanDetails from "@/pages/scan-details";
 import CbomPage from "@/pages/cbom";
 import ScriptsPage from "@/pages/scripts";
+import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -17,6 +18,7 @@ function Router() {
       <Route path="/scans/:id" component={ScanDetails} />
       <Route path="/cbom" component={CbomPage} />
       <Route path="/scripts" component={ScriptsPage} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );
