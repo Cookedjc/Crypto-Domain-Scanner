@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Shield, Activity, Lock, Settings, LayoutDashboard, Menu } from "lucide-react";
+import { Shield, Activity, Lock, Settings, LayoutDashboard, Menu, FileJson } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -41,6 +41,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-4 text-xs font-mono text-muted-foreground/50 uppercase mb-2">Platform</div>
         <NavItem href="/" icon={LayoutDashboard} label="Overview" />
         <NavItem href="/scans" icon={Activity} label="Active Scans" />
+        <NavItem href="/cbom" icon={FileJson} label="CBOM Manager" />
         
         <div className="px-4 text-xs font-mono text-muted-foreground/50 uppercase mt-8 mb-2">Configuration</div>
         <NavItem href="/policies" icon={Lock} label="Security Policies" />

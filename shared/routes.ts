@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { scans, insertScanSchema, scanRequestSchema } from './schema';
+import { scans, insertScanSchema, scanRequestSchema, cbomFiles, cbomComponents } from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -46,6 +46,57 @@ export const api = {
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+};
+
+export const cbomApi = {
+  files: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/cbom/files',
+      responses: {
+        200: z.array(z.custom<typeof cbomFiles.$inferSelect>()),
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/cbom/files/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  components: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/cbom/components',
+      responses: {
+        200: z.array(z.custom<typeof cbomComponents.$inferSelect>()),
+      },
+    },
+    upload: {
+      method: 'POST' as const,
+      path: '/api/cbom/upload',
+      responses: {
+        201: z.object({
+          file: z.custom<typeof cbomFiles.$inferSelect>(),
+          componentsAdded: z.number(),
+        }),
+        400: errorSchemas.validation,
+      },
+    },
+    deduplicate: {
+      method: 'POST' as const,
+      path: '/api/cbom/deduplicate',
+      responses: {
+        200: z.object({
+          removed: z.number(),
+          remaining: z.number(),
+        }),
+        400: errorSchemas.validation,
       },
     },
   },

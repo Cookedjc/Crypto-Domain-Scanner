@@ -5,14 +5,16 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import ScanDetails from "@/pages/scan-details";
+import CbomPage from "@/pages/cbom";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
-      <Route path="/scans" component={Dashboard} /> {/* Alias for active scans */}
+      <Route path="/scans" component={Dashboard} />
       <Route path="/scans/:id" component={ScanDetails} />
+      <Route path="/cbom" component={CbomPage} />
       <Route component={NotFound} />
     </Switch>
   );

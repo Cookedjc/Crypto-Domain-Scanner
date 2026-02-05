@@ -1,12 +1,13 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api, errorSchemas } from "@shared/routes";
+import { api, cbomApi, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import tls from "tls";
 import dns from "dns/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { cbomUploadSchema, cbomDeduplicateSchema, type InsertCbomComponent } from "@shared/schema";
 
 const execPromise = promisify(exec);
 
@@ -274,6 +275,136 @@ export async function registerRoutes(
       }
       console.error("Scan error:", err);
       res.status(500).json({ message: "Internal server error during scan" });
+    }
+  });
+
+  // CBOM Routes
+  app.get(cbomApi.files.list.path, async (req, res) => {
+    const files = await storage.getCbomFiles();
+    res.json(files);
+  });
+
+  app.delete(cbomApi.files.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const file = await storage.getCbomFile(id);
+    if (!file) {
+      return res.status(404).json({ message: "CBOM file not found" });
+    }
+    await storage.deleteCbomFile(id);
+    res.status(204).end();
+  });
+
+  app.get(cbomApi.components.list.path, async (req, res) => {
+    const components = await storage.getCbomComponents();
+    res.json(components);
+  });
+
+  app.post(cbomApi.components.upload.path, async (req, res) => {
+    try {
+      const input = cbomUploadSchema.parse(req.body);
+      const { filename, data } = input;
+
+      // Parse CycloneDX JSON
+      let parsed: any;
+      try {
+        parsed = typeof data === 'string' ? JSON.parse(data) : data;
+      } catch (e) {
+        return res.status(400).json({ message: "Invalid JSON format" });
+      }
+
+      // Create file record
+      const fileRecord = await storage.createCbomFile({
+        filename,
+        componentCount: 0,
+        metadata: {
+          bomFormat: parsed.bomFormat,
+          specVersion: parsed.specVersion,
+          serialNumber: parsed.serialNumber,
+          version: parsed.version,
+        },
+      });
+
+      // Extract components from CycloneDX format
+      const components: InsertCbomComponent[] = [];
+      const rawComponents = parsed.components || [];
+
+      for (const comp of rawComponents) {
+        const cryptoProps = comp.cryptoProperties || {};
+        const assetType = cryptoProps.assetType;
+        
+        components.push({
+          fileId: fileRecord.id,
+          bomRef: comp["bom-ref"],
+          componentType: assetType || comp.type,
+          name: comp.name || "Unknown",
+          version: comp.version,
+          description: comp.description,
+          algorithmMode: cryptoProps.algorithmProperties?.mode,
+          padding: cryptoProps.algorithmProperties?.padding,
+          cryptoFunctions: cryptoProps.algorithmProperties?.cryptoFunctions,
+          oid: cryptoProps.oid,
+          primitiveType: cryptoProps.algorithmProperties?.primitive,
+          parameterSetIdentifier: cryptoProps.algorithmProperties?.parameterSetIdentifier,
+          curve: cryptoProps.algorithmProperties?.curve,
+          executionEnvironment: cryptoProps.algorithmProperties?.executionEnvironment,
+          implementationPlatform: cryptoProps.algorithmProperties?.implementationPlatform,
+          certificationLevel: cryptoProps.algorithmProperties?.certificationLevel,
+          nistQuantumSecurityLevel: cryptoProps.algorithmProperties?.nistQuantumSecurityLevel,
+          rawData: comp,
+        });
+      }
+
+      const createdComponents = await storage.createCbomComponents(components);
+      await storage.updateCbomFileCount(fileRecord.id, createdComponents.length);
+
+      res.status(201).json({
+        file: { ...fileRecord, componentCount: createdComponents.length },
+        componentsAdded: createdComponents.length,
+      });
+    } catch (err) {
+      console.error("CBOM upload error:", err);
+      res.status(500).json({ message: "Failed to process CBOM file" });
+    }
+  });
+
+  app.post(cbomApi.components.deduplicate.path, async (req, res) => {
+    try {
+      const input = cbomDeduplicateSchema.parse(req.body);
+      const { fields } = input;
+
+      const allComponents = await storage.getCbomComponents();
+      const seen = new Map<string, number>();
+      const duplicateIds: number[] = [];
+
+      for (const comp of allComponents) {
+        const key = fields.map((f: string) => {
+          const value = (comp as any)[f];
+          return value !== null && value !== undefined ? String(value) : "";
+        }).join("|");
+
+        if (seen.has(key)) {
+          duplicateIds.push(comp.id);
+        } else {
+          seen.set(key, comp.id);
+        }
+      }
+
+      await storage.deleteCbomComponentsByIds(duplicateIds);
+
+      // Update file counts
+      const files = await storage.getCbomFiles();
+      for (const file of files) {
+        const remaining = await storage.getCbomComponentsByFile(file.id);
+        await storage.updateCbomFileCount(file.id, remaining.length);
+      }
+
+      res.json({
+        removed: duplicateIds.length,
+        remaining: allComponents.length - duplicateIds.length,
+      });
+    } catch (err) {
+      console.error("Deduplication error:", err);
+      res.status(500).json({ message: "Failed to deduplicate components" });
     }
   });
 
