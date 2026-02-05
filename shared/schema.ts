@@ -246,3 +246,129 @@ export const createScheduleSchema = z.object({
 export type CreateScriptRequest = z.infer<typeof createScriptSchema>;
 export type CreateVariableRequest = z.infer<typeof createVariableSchema>;
 export type CreateScheduleRequest = z.infer<typeof createScheduleSchema>;
+
+// ==================== User Management & RBAC ====================
+
+// User Types/Roles
+export const USER_TYPES = ["admin", "superuser", "user", "viewer"] as const;
+export type UserType = typeof USER_TYPES[number];
+
+// Menu items that can be controlled via RBAC
+export const MENU_ITEMS = ["dashboard", "scans", "cbom", "scripts", "settings"] as const;
+export type MenuItem = typeof MENU_ITEMS[number];
+
+// Users table
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  displayName: text("display_name").notNull(),
+  userType: text("user_type").notNull().default("user"), // admin, superuser, user, viewer
+  isActive: boolean("is_active").default(true),
+  lastLogin: timestamp("last_login"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  createdBy: integer("created_by"), // Reference to admin who created this user
+});
+
+// Role permissions - defines which menu items each role can access
+export const rolePermissions = pgTable("role_permissions", {
+  id: serial("id").primaryKey(),
+  userType: text("user_type").notNull(), // admin, superuser, user, viewer
+  menuItem: text("menu_item").notNull(), // dashboard, scans, cbom, scripts, settings
+  canView: boolean("can_view").default(false),
+  canEdit: boolean("can_edit").default(false),
+  canDelete: boolean("can_delete").default(false),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Auth Configuration - OIDC/OAuth settings
+export const authConfig = pgTable("auth_config", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull(), // "oidc", "oauth2", "azure", "google", "okta"
+  displayName: text("display_name").notNull(),
+  clientId: text("client_id").notNull(),
+  clientSecret: text("client_secret"), // Stored encrypted
+  issuerUrl: text("issuer_url"), // For OIDC
+  authorizationUrl: text("authorization_url"), // For OAuth2
+  tokenUrl: text("token_url"),
+  userInfoUrl: text("user_info_url"),
+  scopes: text("scopes").default("openid profile email"),
+  redirectUri: text("redirect_uri"),
+  isEnabled: boolean("is_enabled").default(false),
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Insert schemas for User Management
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastLogin: true,
+});
+
+export const insertRolePermissionSchema = createInsertSchema(rolePermissions).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export const insertAuthConfigSchema = createInsertSchema(authConfig).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Types
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type InsertRolePermission = z.infer<typeof insertRolePermissionSchema>;
+export type AuthConfig = typeof authConfig.$inferSelect;
+export type InsertAuthConfig = z.infer<typeof insertAuthConfigSchema>;
+
+// API validation schemas for Settings
+export const createUserSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  displayName: z.string().min(1, "Display name is required"),
+  userType: z.enum(USER_TYPES).default("user"),
+  isActive: z.boolean().default(true),
+});
+
+export const updateUserSchema = z.object({
+  email: z.string().email("Valid email is required").optional(),
+  displayName: z.string().min(1, "Display name is required").optional(),
+  userType: z.enum(USER_TYPES).optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const updateRolePermissionSchema = z.object({
+  userType: z.enum(USER_TYPES),
+  menuItem: z.enum(MENU_ITEMS),
+  canView: z.boolean(),
+  canEdit: z.boolean(),
+  canDelete: z.boolean(),
+});
+
+export const createAuthConfigSchema = z.object({
+  provider: z.enum(["oidc", "oauth2", "azure", "google", "okta"]),
+  displayName: z.string().min(1, "Display name is required"),
+  clientId: z.string().min(1, "Client ID is required"),
+  clientSecret: z.string().optional(),
+  issuerUrl: z.string().url().optional().or(z.literal("")),
+  authorizationUrl: z.string().url().optional().or(z.literal("")),
+  tokenUrl: z.string().url().optional().or(z.literal("")),
+  userInfoUrl: z.string().url().optional().or(z.literal("")),
+  scopes: z.string().default("openid profile email"),
+  redirectUri: z.string().url().optional().or(z.literal("")),
+  isEnabled: z.boolean().default(false),
+  isDefault: z.boolean().default(false),
+});
+
+export const updateAuthConfigSchema = createAuthConfigSchema.partial();
+
+export type CreateUserRequest = z.infer<typeof createUserSchema>;
+export type UpdateUserRequest = z.infer<typeof updateUserSchema>;
+export type UpdateRolePermissionRequest = z.infer<typeof updateRolePermissionSchema>;
+export type CreateAuthConfigRequest = z.infer<typeof createAuthConfigSchema>;
+export type UpdateAuthConfigRequest = z.infer<typeof updateAuthConfigSchema>;
