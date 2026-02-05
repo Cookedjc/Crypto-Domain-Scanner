@@ -19,6 +19,12 @@ A comprehensive script scheduling system for automating REST API calls and CLI c
 - **Schedules**: Configure scripts to run on a 24-hour clock, specific days of week, or specific dates
 - **Execution History**: View logs and results from script executions
 
+### Settings
+A comprehensive settings page with three tabs:
+- **User Management**: Create, edit, and delete users with email, display name, and user type (admin, superuser, user, viewer)
+- **Authentication Configuration**: Configure OIDC/OAuth providers including Azure AD, Google, Okta, and custom providers with client credentials and redirect URIs
+- **RBAC Controls**: Role-based access control matrix with View/Edit/Delete permissions per user type and menu item; Admin permissions are locked and cannot be modified
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -74,6 +80,9 @@ Preferred communication style: Simple, everyday language.
 - `script_variables`: Stored credentials/tokens for script substitution
 - `script_schedules`: Schedule configurations (times, days, dates)
 - `script_executions`: Execution history and logs
+- `users`: User accounts with email, display name, and user type
+- `role_permissions`: RBAC permission matrix for menu access control
+- `auth_config`: OIDC/OAuth provider configurations
 
 ### API Contract Pattern
 The `shared/routes.ts` file defines typed API contracts using Zod schemas, ensuring type safety between frontend and backend. This includes request/response schemas and URL builders.
