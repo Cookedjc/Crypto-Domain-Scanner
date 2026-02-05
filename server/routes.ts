@@ -1,13 +1,16 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api, cbomApi, errorSchemas } from "@shared/routes";
+import { api, cbomApi, scriptsApi, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import tls from "tls";
 import dns from "dns/promises";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
-import { cbomUploadSchema, cbomDeduplicateSchema, type InsertCbomComponent } from "@shared/schema";
+import { 
+  cbomUploadSchema, cbomDeduplicateSchema, type InsertCbomComponent,
+  createScriptSchema, createVariableSchema, createScheduleSchema
+} from "@shared/schema";
 
 const execPromise = promisify(exec);
 
@@ -408,5 +411,347 @@ export async function registerRoutes(
     }
   });
 
+  // === Script Variables Routes ===
+  app.get(scriptsApi.variables.list.path, async (req, res) => {
+    const variables = await storage.getVariables();
+    // Mask secret values in response
+    const masked = variables.map(v => ({
+      ...v,
+      value: v.isSecret ? "********" : v.value
+    }));
+    res.json(masked);
+  });
+
+  app.post(scriptsApi.variables.create.path, async (req, res) => {
+    try {
+      const input = createVariableSchema.parse(req.body);
+      const variable = await storage.createVariable(input);
+      res.status(201).json({
+        ...variable,
+        value: variable.isSecret ? "********" : variable.value
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create variable" });
+    }
+  });
+
+  app.patch(scriptsApi.variables.update.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getVariable(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Variable not found" });
+    }
+    const updated = await storage.updateVariable(id, req.body);
+    res.json({
+      ...updated,
+      value: updated?.isSecret ? "********" : updated?.value
+    });
+  });
+
+  app.delete(scriptsApi.variables.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getVariable(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Variable not found" });
+    }
+    await storage.deleteVariable(id);
+    res.status(204).end();
+  });
+
+  // === Scheduled Scripts Routes ===
+  app.get(scriptsApi.scripts.list.path, async (req, res) => {
+    const scripts = await storage.getScripts();
+    res.json(scripts);
+  });
+
+  app.get(scriptsApi.scripts.get.path, async (req, res) => {
+    const script = await storage.getScript(Number(req.params.id));
+    if (!script) {
+      return res.status(404).json({ message: "Script not found" });
+    }
+    res.json(script);
+  });
+
+  app.post(scriptsApi.scripts.create.path, async (req, res) => {
+    try {
+      const input = createScriptSchema.parse(req.body);
+      const script = await storage.createScript(input);
+      res.status(201).json(script);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create script" });
+    }
+  });
+
+  app.patch(scriptsApi.scripts.update.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getScript(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Script not found" });
+    }
+    const updated = await storage.updateScript(id, req.body);
+    res.json(updated);
+  });
+
+  app.delete(scriptsApi.scripts.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getScript(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Script not found" });
+    }
+    await storage.deleteScript(id);
+    res.status(204).end();
+  });
+
+  // Execute script manually
+  app.post(scriptsApi.scripts.execute.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const script = await storage.getScript(id);
+    if (!script) {
+      return res.status(404).json({ message: "Script not found" });
+    }
+
+    // Create execution record
+    const execution = await storage.createExecution({
+      scriptId: id,
+      status: "running",
+      triggeredBy: "manual",
+    });
+
+    // Execute script in background
+    executeScript(script.command, execution.id);
+
+    res.json(execution);
+  });
+
+  // === Script Schedules Routes ===
+  app.get(scriptsApi.schedules.list.path, async (req, res) => {
+    const schedules = await storage.getSchedules();
+    res.json(schedules);
+  });
+
+  app.get(scriptsApi.schedules.listByScript.path, async (req, res) => {
+    const scriptId = Number(req.params.scriptId);
+    const schedules = await storage.getSchedulesByScript(scriptId);
+    res.json(schedules);
+  });
+
+  app.post(scriptsApi.schedules.create.path, async (req, res) => {
+    try {
+      const input = createScheduleSchema.parse(req.body);
+      
+      // Verify script exists
+      const script = await storage.getScript(input.scriptId);
+      if (!script) {
+        return res.status(400).json({ message: "Script not found" });
+      }
+
+      const schedule = await storage.createSchedule(input);
+      
+      // Calculate and set next run time
+      const nextRun = calculateNextRun(schedule);
+      if (nextRun) {
+        await storage.updateScheduleNextRun(schedule.id, nextRun);
+      }
+      
+      const updated = await storage.getSchedule(schedule.id);
+      res.status(201).json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(500).json({ message: "Failed to create schedule" });
+    }
+  });
+
+  app.patch(scriptsApi.schedules.update.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getSchedule(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Schedule not found" });
+    }
+    const updated = await storage.updateSchedule(id, req.body);
+    
+    // Recalculate next run if schedule was updated
+    if (updated) {
+      const nextRun = calculateNextRun(updated);
+      if (nextRun) {
+        await storage.updateScheduleNextRun(id, nextRun);
+      }
+    }
+    
+    const final = await storage.getSchedule(id);
+    res.json(final);
+  });
+
+  app.delete(scriptsApi.schedules.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getSchedule(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Schedule not found" });
+    }
+    await storage.deleteSchedule(id);
+    res.status(204).end();
+  });
+
+  // === Script Executions Routes ===
+  app.get(scriptsApi.executions.list.path, async (req, res) => {
+    const limit = req.query.limit ? Number(req.query.limit) : 100;
+    const executions = await storage.getExecutions(limit);
+    res.json(executions);
+  });
+
+  app.get(scriptsApi.executions.listByScript.path, async (req, res) => {
+    const scriptId = Number(req.params.scriptId);
+    const limit = req.query.limit ? Number(req.query.limit) : 50;
+    const executions = await storage.getExecutionsByScript(scriptId, limit);
+    res.json(executions);
+  });
+
+  // Start scheduler
+  startScheduler();
+
   return httpServer;
+}
+
+// Helper function to execute a script command
+async function executeScript(command: string, executionId: number) {
+  try {
+    // Get all variables to substitute into command
+    const variables = await storage.getVariables();
+    let processedCommand = command;
+    
+    // Replace ${VAR_NAME} patterns with actual values
+    for (const variable of variables) {
+      const pattern = new RegExp(`\\$\\{${variable.name}\\}`, 'g');
+      processedCommand = processedCommand.replace(pattern, variable.value);
+    }
+
+    const { stdout, stderr } = await execPromise(processedCommand, {
+      timeout: 300000, // 5 minute timeout
+      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+    });
+
+    await storage.updateExecution(executionId, {
+      status: "success",
+      output: stdout,
+      errorOutput: stderr || null,
+      exitCode: 0,
+      completedAt: new Date(),
+    });
+  } catch (err: any) {
+    await storage.updateExecution(executionId, {
+      status: err.killed ? "timeout" : "failed",
+      output: err.stdout || null,
+      errorOutput: err.stderr || err.message,
+      exitCode: err.code || 1,
+      completedAt: new Date(),
+    });
+  }
+}
+
+// Calculate next run time for a schedule
+function calculateNextRun(schedule: any): Date | null {
+  if (!schedule.isEnabled) return null;
+  
+  const now = new Date();
+  const times = schedule.times || [];
+  
+  if (schedule.scheduleType === "daily" || schedule.scheduleType === "specific_times") {
+    // Find next time today or tomorrow
+    for (const timeStr of times) {
+      const [hours, minutes] = timeStr.split(':').map(Number);
+      const candidate = new Date(now);
+      candidate.setHours(hours, minutes, 0, 0);
+      
+      if (candidate > now) {
+        return candidate;
+      }
+    }
+    
+    // Try tomorrow
+    if (times.length > 0) {
+      const [hours, minutes] = times[0].split(':').map(Number);
+      const tomorrow = new Date(now);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(hours, minutes, 0, 0);
+      return tomorrow;
+    }
+  } else if (schedule.scheduleType === "specific_date") {
+    const specificDates = schedule.specificDates || [];
+    for (const dateStr of specificDates) {
+      const candidate = new Date(dateStr);
+      if (times.length > 0) {
+        const [hours, minutes] = times[0].split(':').map(Number);
+        candidate.setHours(hours, minutes, 0, 0);
+      }
+      if (candidate > now) {
+        return candidate;
+      }
+    }
+  } else if (schedule.scheduleType === "days_of_week") {
+    const daysOfWeek = schedule.daysOfWeek || [];
+    
+    for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+      const candidate = new Date(now);
+      candidate.setDate(candidate.getDate() + dayOffset);
+      const dayOfWeek = candidate.getDay();
+      
+      if (daysOfWeek.includes(dayOfWeek)) {
+        for (const timeStr of times) {
+          const [hours, minutes] = timeStr.split(':').map(Number);
+          candidate.setHours(hours, minutes, 0, 0);
+          
+          if (candidate > now) {
+            return candidate;
+          }
+        }
+      }
+    }
+  }
+  
+  return null;
+}
+
+// Scheduler that runs every minute to check for due scripts
+let schedulerInterval: NodeJS.Timeout | null = null;
+
+function startScheduler() {
+  if (schedulerInterval) return;
+  
+  console.log("Script scheduler started");
+  
+  schedulerInterval = setInterval(async () => {
+    try {
+      const now = new Date();
+      const dueSchedules = await storage.getDueSchedules(now);
+      
+      for (const schedule of dueSchedules) {
+        const script = await storage.getScript(schedule.scriptId);
+        if (!script || !script.isEnabled) continue;
+        
+        // Create execution record
+        const execution = await storage.createExecution({
+          scriptId: schedule.scriptId,
+          scheduleId: schedule.id,
+          status: "running",
+          triggeredBy: "scheduler",
+        });
+        
+        // Execute script
+        executeScript(script.command, execution.id);
+        
+        // Update schedule with next run time
+        const nextRun = calculateNextRun(schedule);
+        await storage.updateScheduleNextRun(schedule.id, nextRun, now);
+      }
+    } catch (err) {
+      console.error("Scheduler error:", err);
+    }
+  }, 60000); // Check every minute
 }

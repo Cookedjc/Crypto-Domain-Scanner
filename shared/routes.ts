@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { scans, insertScanSchema, scanRequestSchema, cbomFiles, cbomComponents } from './schema';
+import { 
+  scans, insertScanSchema, scanRequestSchema, cbomFiles, cbomComponents,
+  scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
+  createScriptSchema, createVariableSchema, createScheduleSchema
+} from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -97,6 +101,151 @@ export const cbomApi = {
           remaining: z.number(),
         }),
         400: errorSchemas.validation,
+      },
+    },
+  },
+};
+
+// Scripts API
+export const scriptsApi = {
+  variables: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/scripts/variables',
+      responses: {
+        200: z.array(z.custom<typeof scriptVariables.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/scripts/variables',
+      input: createVariableSchema,
+      responses: {
+        201: z.custom<typeof scriptVariables.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/scripts/variables/:id',
+      responses: {
+        200: z.custom<typeof scriptVariables.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/scripts/variables/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  scripts: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/scripts',
+      responses: {
+        200: z.array(z.custom<typeof scheduledScripts.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/scripts/:id',
+      responses: {
+        200: z.custom<typeof scheduledScripts.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/scripts',
+      input: createScriptSchema,
+      responses: {
+        201: z.custom<typeof scheduledScripts.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/scripts/:id',
+      responses: {
+        200: z.custom<typeof scheduledScripts.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/scripts/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    execute: {
+      method: 'POST' as const,
+      path: '/api/scripts/:id/execute',
+      responses: {
+        200: z.custom<typeof scriptExecutions.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  schedules: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/scripts/schedules',
+      responses: {
+        200: z.array(z.custom<typeof scriptSchedules.$inferSelect>()),
+      },
+    },
+    listByScript: {
+      method: 'GET' as const,
+      path: '/api/scripts/:scriptId/schedules',
+      responses: {
+        200: z.array(z.custom<typeof scriptSchedules.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/scripts/schedules',
+      input: createScheduleSchema,
+      responses: {
+        201: z.custom<typeof scriptSchedules.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/scripts/schedules/:id',
+      responses: {
+        200: z.custom<typeof scriptSchedules.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/scripts/schedules/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+  },
+  executions: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/scripts/executions',
+      responses: {
+        200: z.array(z.custom<typeof scriptExecutions.$inferSelect>()),
+      },
+    },
+    listByScript: {
+      method: 'GET' as const,
+      path: '/api/scripts/:scriptId/executions',
+      responses: {
+        200: z.array(z.custom<typeof scriptExecutions.$inferSelect>()),
       },
     },
   },
