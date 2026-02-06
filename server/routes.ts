@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api, cbomApi, scriptsApi, settingsApi, policiesApi, reportsApi, errorSchemas } from "@shared/routes";
+import { api, cbomApi, scriptsApi, settingsApi, policiesApi, reportsApi, outputDirectoriesApi, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import tls from "tls";
 import dns from "dns/promises";
@@ -14,6 +14,7 @@ import {
   createAuthConfigSchema, updateAuthConfigSchema,
   createSecurityPolicySchema, updateSecurityPolicySchema,
   createReportSchema, updateReportSchema,
+  createOutputDirectorySchema, updateOutputDirectorySchema,
   type CbomComponent, type SecurityPolicy
 } from "@shared/schema";
 import fs from "fs/promises";
@@ -967,6 +968,151 @@ export async function registerRoutes(
   app.delete(reportsApi.reports.delete.path, async (req, res) => {
     await storage.deleteReport(Number(req.params.id));
     res.status(204).send();
+  });
+
+  // Output Directories
+  app.get(outputDirectoriesApi.directories.list.path, async (req, res) => {
+    const dirs = await storage.getOutputDirectories();
+    res.json(dirs);
+  });
+
+  app.post(outputDirectoriesApi.directories.create.path, async (req, res) => {
+    const parsed = createOutputDirectorySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const dir = await storage.createOutputDirectory(parsed.data);
+    res.status(201).json(dir);
+  });
+
+  app.patch(outputDirectoriesApi.directories.update.path, async (req, res) => {
+    const parsed = updateOutputDirectorySchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = await storage.updateOutputDirectory(Number(req.params.id), parsed.data);
+    if (!updated) return res.status(404).json({ message: "Output directory not found" });
+    res.json(updated);
+  });
+
+  app.delete(outputDirectoriesApi.directories.delete.path, async (req, res) => {
+    await storage.deleteOutputDirectory(Number(req.params.id));
+    res.status(204).send();
+  });
+
+  app.post(outputDirectoriesApi.directories.scan.path, async (req, res) => {
+    try {
+      const dirs = await storage.getOutputDirectories();
+      const enabledDirs = dirs.filter(d => d.enabled);
+      const results: any[] = [];
+      let totalFiles = 0;
+
+      for (const dir of enabledDirs) {
+        try {
+          const dirPath = path.resolve(dir.path);
+          const stat = await fs.stat(dirPath);
+          if (!stat.isDirectory()) continue;
+
+          const entries = await fs.readdir(dirPath, { withFileTypes: true });
+          const fileInfos: any[] = [];
+
+          for (const entry of entries) {
+            if (!entry.isFile()) continue;
+            const fullPath = path.join(dirPath, entry.name);
+            const fileStat = await fs.stat(fullPath);
+            fileInfos.push({
+              filename: entry.name,
+              fullPath,
+              size: fileStat.size,
+              modifiedAt: fileStat.mtime.toISOString(),
+              isJson: entry.name.endsWith('.json'),
+            });
+          }
+
+          totalFiles += fileInfos.length;
+          await storage.updateOutputDirectoryLastScanned(dir.id);
+
+          results.push({
+            directoryId: dir.id,
+            directoryLabel: dir.label,
+            directoryPath: dir.path,
+            files: fileInfos,
+          });
+        } catch (err) {
+          results.push({
+            directoryId: dir.id,
+            directoryLabel: dir.label,
+            directoryPath: dir.path,
+            files: [],
+          });
+        }
+      }
+
+      res.json({ directories: results, totalFiles });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to scan directories" });
+    }
+  });
+
+  app.post('/api/cbom/directories/import', async (req, res) => {
+    try {
+      const { fullPath, filename } = req.body;
+      if (!fullPath || !filename) {
+        return res.status(400).json({ message: "fullPath and filename are required" });
+      }
+
+      const resolvedPath = path.resolve(fullPath);
+      const content = await fs.readFile(resolvedPath, 'utf-8');
+      const parsed = JSON.parse(content);
+
+      const metadata: any = {};
+      if (parsed.bomFormat) metadata.bomFormat = parsed.bomFormat;
+      if (parsed.specVersion) metadata.specVersion = parsed.specVersion;
+      if (parsed.serialNumber) metadata.serialNumber = parsed.serialNumber;
+      if (parsed.version !== undefined) metadata.version = parsed.version;
+      if (parsed.metadata?.component?.name) metadata.componentName = parsed.metadata.component.name;
+
+      const file = await storage.createCbomFile({
+        filename,
+        componentCount: 0,
+        metadata,
+      });
+
+      let componentsAdded = 0;
+      const components: any[] = parsed.components || [];
+      
+      const componentBatch: InsertCbomComponent[] = [];
+      for (const comp of components) {
+        const cryptoProps = comp.cryptoProperties || {};
+        const assetType = cryptoProps.assetType;
+
+        componentBatch.push({
+          fileId: file.id,
+          bomRef: comp["bom-ref"],
+          componentType: assetType || comp.type,
+          name: comp.name || "Unknown",
+          version: comp.version,
+          description: comp.description,
+          algorithmMode: cryptoProps.algorithmProperties?.mode,
+          padding: cryptoProps.algorithmProperties?.padding,
+          cryptoFunctions: cryptoProps.algorithmProperties?.cryptoFunctions,
+          oid: cryptoProps.oid,
+          primitiveType: cryptoProps.algorithmProperties?.primitive,
+          parameterSetIdentifier: cryptoProps.algorithmProperties?.parameterSetIdentifier,
+          curve: cryptoProps.algorithmProperties?.curve,
+          executionEnvironment: cryptoProps.algorithmProperties?.executionEnvironment,
+          implementationPlatform: cryptoProps.algorithmProperties?.implementationPlatform,
+          certificationLevel: cryptoProps.algorithmProperties?.certificationLevel,
+          nistQuantumSecurityLevel: cryptoProps.algorithmProperties?.nistQuantumSecurityLevel,
+          rawData: comp,
+        });
+      }
+
+      const createdComponents = await storage.createCbomComponents(componentBatch);
+      componentsAdded = createdComponents.length;
+
+      await storage.updateCbomFileCount(file.id, componentsAdded);
+
+      res.status(201).json({ file, componentsAdded });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to import file" });
+    }
   });
 
   // Start scheduler

@@ -478,6 +478,35 @@ export type UpdateSecurityPolicyRequest = z.infer<typeof updateSecurityPolicySch
 export const REPORT_STATUSES = ["draft", "final", "archived"] as const;
 export type ReportStatus = typeof REPORT_STATUSES[number];
 
+export const outputDirectories = pgTable("output_directories", {
+  id: serial("id").primaryKey(),
+  path: text("path").notNull(),
+  label: text("label").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  lastScannedAt: timestamp("last_scanned_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOutputDirectorySchema = createInsertSchema(outputDirectories).omit({
+  id: true,
+  lastScannedAt: true,
+  createdAt: true,
+});
+
+export type OutputDirectory = typeof outputDirectories.$inferSelect;
+export type InsertOutputDirectory = typeof outputDirectories.$inferInsert;
+
+export const createOutputDirectorySchema = z.object({
+  path: z.string().min(1, "Directory path is required"),
+  label: z.string().min(1, "Label is required"),
+  enabled: z.boolean().default(true),
+});
+
+export const updateOutputDirectorySchema = createOutputDirectorySchema.partial();
+
+export type CreateOutputDirectoryRequest = z.infer<typeof createOutputDirectorySchema>;
+export type UpdateOutputDirectoryRequest = z.infer<typeof updateOutputDirectorySchema>;
+
 export const reports = pgTable("reports", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),

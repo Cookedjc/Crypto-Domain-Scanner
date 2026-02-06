@@ -2,7 +2,7 @@ import { db } from "./db";
 import { 
   scans, cbomFiles, cbomComponents, 
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
-  users, rolePermissions, authConfig, securityPolicies, reports,
+  users, rolePermissions, authConfig, securityPolicies, reports, outputDirectories,
   type InsertScan, type Scan, 
   type CbomFile, type CbomComponent, type InsertCbomFile, type InsertCbomComponent,
   type ScriptVariable, type InsertScriptVariable,
@@ -14,6 +14,7 @@ import {
   type AuthConfig, type InsertAuthConfig,
   type SecurityPolicy, type InsertSecurityPolicy,
   type Report, type InsertReport,
+  type OutputDirectory, type InsertOutputDirectory,
   USER_TYPES, MENU_ITEMS
 } from "@shared/schema";
 import { eq, desc, and, inArray, lte, isNull, or } from "drizzle-orm";
@@ -101,6 +102,14 @@ export interface IStorage {
   getReport(id: number): Promise<Report | undefined>;
   updateReport(id: number, data: Partial<InsertReport>): Promise<Report | undefined>;
   deleteReport(id: number): Promise<void>;
+
+  // Output Directories
+  createOutputDirectory(dir: InsertOutputDirectory): Promise<OutputDirectory>;
+  getOutputDirectories(): Promise<OutputDirectory[]>;
+  getOutputDirectory(id: number): Promise<OutputDirectory | undefined>;
+  updateOutputDirectory(id: number, data: Partial<InsertOutputDirectory>): Promise<OutputDirectory | undefined>;
+  deleteOutputDirectory(id: number): Promise<void>;
+  updateOutputDirectoryLastScanned(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -488,6 +497,39 @@ export class DatabaseStorage implements IStorage {
 
   async deleteReport(id: number): Promise<void> {
     await db.delete(reports).where(eq(reports.id, id));
+  }
+
+  // Output Directories
+  async createOutputDirectory(dir: InsertOutputDirectory): Promise<OutputDirectory> {
+    const [created] = await db.insert(outputDirectories).values(dir).returning();
+    return created;
+  }
+
+  async getOutputDirectories(): Promise<OutputDirectory[]> {
+    return await db.select().from(outputDirectories).orderBy(desc(outputDirectories.createdAt));
+  }
+
+  async getOutputDirectory(id: number): Promise<OutputDirectory | undefined> {
+    const [dir] = await db.select().from(outputDirectories).where(eq(outputDirectories.id, id));
+    return dir;
+  }
+
+  async updateOutputDirectory(id: number, data: Partial<InsertOutputDirectory>): Promise<OutputDirectory | undefined> {
+    const [updated] = await db.update(outputDirectories)
+      .set(data)
+      .where(eq(outputDirectories.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteOutputDirectory(id: number): Promise<void> {
+    await db.delete(outputDirectories).where(eq(outputDirectories.id, id));
+  }
+
+  async updateOutputDirectoryLastScanned(id: number): Promise<void> {
+    await db.update(outputDirectories)
+      .set({ lastScannedAt: new Date() })
+      .where(eq(outputDirectories.id, id));
   }
 }
 

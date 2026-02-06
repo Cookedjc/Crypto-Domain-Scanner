@@ -2,12 +2,13 @@ import { z } from 'zod';
 import { 
   scans, insertScanSchema, scanRequestSchema, cbomFiles, cbomComponents,
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
-  users, rolePermissions, authConfig, securityPolicies, reports,
+  users, rolePermissions, authConfig, securityPolicies, reports, outputDirectories,
   createScriptSchema, createVariableSchema, createScheduleSchema,
   createUserSchema, updateUserSchema, updateRolePermissionSchema,
   createAuthConfigSchema, updateAuthConfigSchema,
   createSecurityPolicySchema, updateSecurityPolicySchema,
-  createReportSchema, updateReportSchema
+  createReportSchema, updateReportSchema,
+  createOutputDirectorySchema, updateOutputDirectorySchema
 } from './schema';
 
 export const errorSchemas = {
@@ -477,6 +478,66 @@ export const reportsApi = {
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+};
+
+// Output Directories API
+export const outputDirectoriesApi = {
+  directories: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/cbom/directories',
+      responses: {
+        200: z.array(z.custom<typeof outputDirectories.$inferSelect>()),
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/cbom/directories',
+      input: createOutputDirectorySchema,
+      responses: {
+        201: z.custom<typeof outputDirectories.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/cbom/directories/:id',
+      input: updateOutputDirectorySchema,
+      responses: {
+        200: z.custom<typeof outputDirectories.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/cbom/directories/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    scan: {
+      method: 'POST' as const,
+      path: '/api/cbom/directories/scan',
+      responses: {
+        200: z.object({
+          directories: z.array(z.object({
+            directoryId: z.number(),
+            directoryLabel: z.string(),
+            directoryPath: z.string(),
+            files: z.array(z.object({
+              filename: z.string(),
+              fullPath: z.string(),
+              size: z.number(),
+              modifiedAt: z.string(),
+              isJson: z.boolean(),
+            })),
+          })),
+          totalFiles: z.number(),
+        }),
       },
     },
   },
