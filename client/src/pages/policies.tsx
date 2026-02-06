@@ -565,14 +565,22 @@ export default function PoliciesPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="min-key-size">Minimum Key Size (bits)</Label>
-                      <Input
-                        id="min-key-size"
-                        type="number"
-                        value={form.minimumKeySize ?? ""}
-                        onChange={e => setForm({ ...form, minimumKeySize: e.target.value ? Number(e.target.value) : null })}
-                        placeholder="e.g., 256"
-                        data-testid="input-min-key-size"
-                      />
+                      <Select
+                        value={form.minimumKeySize?.toString() || "none"}
+                        onValueChange={v => setForm({ ...form, minimumKeySize: v === "none" ? null : Number(v) })}
+                      >
+                        <SelectTrigger id="min-key-size" data-testid="input-min-key-size">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Not Specified</SelectItem>
+                          <SelectItem value="128">128-bit</SelectItem>
+                          <SelectItem value="256">256-bit</SelectItem>
+                          <SelectItem value="512">512-bit</SelectItem>
+                          <SelectItem value="768">768-bit</SelectItem>
+                          <SelectItem value="1024">1024-bit</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="min-nist-level">Minimum NIST Quantum Level</Label>
