@@ -40,6 +40,7 @@ import {
   FolderOpen,
   FolderPlus,
   FolderSync,
+  FolderSearch,
   Plus,
   Power,
   PowerOff,
@@ -51,6 +52,7 @@ import {
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { DirectoryBrowser } from "@/components/directory-browser";
 import type { CbomComponent, OutputDirectory } from "@shared/schema";
 
 const SORTABLE_FIELDS = [
@@ -238,6 +240,7 @@ export default function CbomPage() {
   const [showAddDir, setShowAddDir] = useState(false);
   const [newDirLabel, setNewDirLabel] = useState("");
   const [newDirPath, setNewDirPath] = useState("");
+  const [showDirBrowser, setShowDirBrowser] = useState(false);
   const [scanResults, setScanResults] = useState<any>(null);
 
   const policyViolationsByComponent = useMemo(() => {
@@ -888,13 +891,25 @@ export default function CbomPage() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="dir-path">Directory Path</Label>
-                        <Input
-                          id="dir-path"
-                          placeholder="e.g., /tmp/scanner-output"
-                          value={newDirPath}
-                          onChange={(e) => setNewDirPath(e.target.value)}
-                          data-testid="input-dir-path"
-                        />
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="dir-path"
+                            placeholder="e.g., /tmp/scanner-output"
+                            value={newDirPath}
+                            onChange={(e) => setNewDirPath(e.target.value)}
+                            className="flex-1"
+                            data-testid="input-dir-path"
+                          />
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setShowDirBrowser(true)}
+                            title="Browse directories"
+                            data-testid="button-browse-directories"
+                          >
+                            <FolderSearch className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                     <div className="flex justify-end gap-2">
@@ -1081,6 +1096,13 @@ export default function CbomPage() {
             </div>
           </TabsContent>
         </Tabs>
+
+        <DirectoryBrowser
+          open={showDirBrowser}
+          onOpenChange={setShowDirBrowser}
+          onSelect={(path) => setNewDirPath(path)}
+          initialPath={newDirPath || '/'}
+        />
 
         {/* Deduplication Dialog */}
         <AnimatePresence>

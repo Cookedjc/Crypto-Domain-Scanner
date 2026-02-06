@@ -1050,6 +1050,215 @@ export async function registerRoutes(
     }
   });
 
+  app.get('/api/filesystem/browse', async (req, res) => {
+    try {
+      const browsePath = typeof req.query.path === 'string' ? req.query.path : '/';
+      const resolvedPath = path.resolve(browsePath);
+
+      const ALLOWED_ROOTS = [
+        '/tmp',
+        '/home',
+        '/mnt',
+        '/media',
+        '/net',
+        '/Volumes',
+        '/run/media',
+        process.env.HOME || '/home',
+      ];
+
+      const dirs = await storage.getOutputDirectories();
+      const configuredPaths = dirs.map(d => path.resolve(d.path));
+      const allAllowed = [...ALLOWED_ROOTS, ...configuredPaths];
+
+      const isWithinAllowed = allAllowed.some(allowed => {
+        const resolvedAllowed = path.resolve(allowed);
+        return resolvedPath === resolvedAllowed ||
+               resolvedPath.startsWith(resolvedAllowed + '/');
+      });
+
+      const entries: Array<{
+        name: string;
+        path: string;
+        type: 'directory' | 'drive' | 'mount' | 'file';
+        accessible: boolean;
+      }> = [];
+
+      if (resolvedPath === '/') {
+        const topLevelSet = new Set<string>();
+        for (const allowed of allAllowed) {
+          const resolved = path.resolve(allowed);
+          const parts = resolved.split('/').filter(Boolean);
+          if (parts.length > 0) {
+            topLevelSet.add(parts[0]);
+          }
+        }
+        const topLevelDirs = Array.from(topLevelSet);
+
+        for (const dirName of topLevelDirs) {
+          const dirPath = '/' + dirName;
+          let accessible = true;
+          try {
+            await fs.access(dirPath);
+          } catch {
+            accessible = false;
+          }
+          const isMountDir = ['mnt', 'media', 'net', 'Volumes'].includes(dirName);
+          entries.push({
+            name: dirName,
+            path: dirPath,
+            type: isMountDir ? 'mount' : 'directory',
+            accessible,
+          });
+        }
+      } else if (!isWithinAllowed) {
+        const isAncestorOfAllowed = allAllowed.some(allowed => {
+          const resolvedAllowed = path.resolve(allowed);
+          return resolvedAllowed.startsWith(resolvedPath + '/');
+        });
+
+        if (!isAncestorOfAllowed) {
+          return res.status(403).json({ message: "Access to this path is restricted" });
+        }
+
+        try {
+          const dirEntries = await fs.readdir(resolvedPath, { withFileTypes: true });
+
+          for (const entry of dirEntries) {
+            if (entry.name.startsWith('.')) continue;
+            const entryPath = path.join(resolvedPath, entry.name);
+
+            const isRelevant = allAllowed.some(allowed => {
+              const resolvedAllowed = path.resolve(allowed);
+              return resolvedAllowed === entryPath ||
+                     resolvedAllowed.startsWith(entryPath + '/') ||
+                     entryPath.startsWith(resolvedAllowed + '/');
+            });
+            if (!isRelevant) continue;
+
+            let isDir = false;
+            let accessible = true;
+            try {
+              if (entry.isDirectory()) {
+                isDir = true;
+              } else if (entry.isSymbolicLink()) {
+                const stat = await fs.stat(entryPath);
+                isDir = stat.isDirectory();
+              }
+            } catch {
+              accessible = false;
+              isDir = entry.isDirectory();
+            }
+
+            if (isDir) {
+              entries.push({
+                name: entry.name,
+                path: entryPath,
+                type: 'directory',
+                accessible,
+              });
+            }
+          }
+        } catch {
+          return res.json({
+            currentPath: resolvedPath,
+            parentPath: path.dirname(resolvedPath) !== resolvedPath ? path.dirname(resolvedPath) : null,
+            entries: [],
+            error: 'Cannot read directory. Check permissions.',
+          });
+        }
+      } else {
+        try {
+          const dirEntries = await fs.readdir(resolvedPath, { withFileTypes: true });
+
+          for (const entry of dirEntries) {
+            if (entry.name.startsWith('.')) continue;
+
+            const entryPath = path.join(resolvedPath, entry.name);
+            let isDir = false;
+            let accessible = true;
+
+            try {
+              if (entry.isDirectory()) {
+                isDir = true;
+              } else if (entry.isSymbolicLink()) {
+                const stat = await fs.stat(entryPath);
+                isDir = stat.isDirectory();
+              }
+            } catch {
+              accessible = false;
+              isDir = entry.isDirectory();
+            }
+
+            if (isDir) {
+              const isMountPoint = resolvedPath === '/mnt' || resolvedPath === '/media' ||
+                resolvedPath === '/net' || resolvedPath === '/Volumes' ||
+                resolvedPath === '/run/media';
+              entries.push({
+                name: entry.name,
+                path: entryPath,
+                type: isMountPoint ? 'mount' : 'directory',
+                accessible,
+              });
+            }
+          }
+        } catch {
+          return res.json({
+            currentPath: resolvedPath,
+            parentPath: path.dirname(resolvedPath) !== resolvedPath ? path.dirname(resolvedPath) : null,
+            entries: [],
+            error: 'Cannot read directory. Check permissions.',
+          });
+        }
+      }
+
+      entries.sort((a, b) => {
+        if (a.type === 'mount' && b.type !== 'mount') return -1;
+        if (a.type !== 'mount' && b.type === 'mount') return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      const quickAccess: Array<{ name: string; path: string; type: string }> = [];
+      const checkDirs = [
+        { name: 'Root (/)', path: '/' },
+        { name: 'Home', path: process.env.HOME || '/home' },
+        { name: 'Temp', path: '/tmp' },
+        { name: 'Mounts', path: '/mnt' },
+        { name: 'Media', path: '/media' },
+        { name: 'Network', path: '/net' },
+      ];
+
+      for (const dir of checkDirs) {
+        try {
+          await fs.access(dir.path);
+          quickAccess.push({ name: dir.name, path: dir.path, type: 'quick' });
+        } catch {
+          // skip inaccessible
+        }
+      }
+
+      for (const cfgDir of dirs) {
+        const cfgPath = path.resolve(cfgDir.path);
+        if (!quickAccess.some(qa => qa.path === cfgPath)) {
+          try {
+            await fs.access(cfgPath);
+            quickAccess.push({ name: cfgDir.label, path: cfgPath, type: 'configured' });
+          } catch {
+            // skip inaccessible
+          }
+        }
+      }
+
+      res.json({
+        currentPath: resolvedPath,
+        parentPath: path.dirname(resolvedPath) !== resolvedPath ? path.dirname(resolvedPath) : null,
+        entries,
+        quickAccess,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to browse filesystem" });
+    }
+  });
+
   app.post('/api/cbom/directories/import', async (req, res) => {
     try {
       const { fullPath, filename } = req.body;

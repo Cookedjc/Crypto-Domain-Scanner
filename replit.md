@@ -12,6 +12,7 @@ The platform includes a Cryptographic Bill of Materials (CBOM) Manager that allo
 - Sortable and filterable component tables
 - Deduplication based on selected fields
 - **Output Directories**: Monitor filesystem paths for new CBOM files with add/enable/disable/delete controls, directory scanning to discover files, direct import of CycloneDX JSON files, and a non-functional "Format to CycloneDX" button. Import validates file paths are within configured, enabled directories for security.
+- **Directory Browser**: Interactive filesystem explorer dialog for selecting directory paths, with Quick Access shortcuts to common locations (Home, Temp, Mounts, Media, Network), breadcrumb navigation, and security-restricted browsing that only exposes allowed paths (/tmp, /home, /mnt, /media, /net, configured output directories).
 
 ### Scripts Manager
 A comprehensive script scheduling system for automating REST API calls and CLI commands:
