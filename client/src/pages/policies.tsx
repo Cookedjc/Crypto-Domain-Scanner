@@ -583,7 +583,7 @@ export default function PoliciesPage() {
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="min-nist-level">Minimum NIST Quantum Level</Label>
+                      <Label htmlFor="min-nist-level">NIST FIPS Standard</Label>
                       <Select
                         value={form.minimumNistLevel?.toString() || "none"}
                         onValueChange={v => setForm({ ...form, minimumNistLevel: v === "none" ? null : Number(v) })}
@@ -593,11 +593,9 @@ export default function PoliciesPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="none">Not Required</SelectItem>
-                          <SelectItem value="1">Level 1</SelectItem>
-                          <SelectItem value="2">Level 2</SelectItem>
-                          <SelectItem value="3">Level 3</SelectItem>
-                          <SelectItem value="4">Level 4</SelectItem>
-                          <SelectItem value="5">Level 5</SelectItem>
+                          <SelectItem value="203">FIPS 203</SelectItem>
+                          <SelectItem value="204">FIPS 204</SelectItem>
+                          <SelectItem value="205">FIPS 205</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
