@@ -2,11 +2,12 @@ import { z } from 'zod';
 import { 
   scans, insertScanSchema, scanRequestSchema, cbomFiles, cbomComponents,
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
-  users, rolePermissions, authConfig, securityPolicies,
+  users, rolePermissions, authConfig, securityPolicies, reports,
   createScriptSchema, createVariableSchema, createScheduleSchema,
   createUserSchema, updateUserSchema, updateRolePermissionSchema,
   createAuthConfigSchema, updateAuthConfigSchema,
-  createSecurityPolicySchema, updateSecurityPolicySchema
+  createSecurityPolicySchema, updateSecurityPolicySchema,
+  createReportSchema, updateReportSchema
 } from './schema';
 
 export const errorSchemas = {
@@ -429,6 +430,53 @@ export const policiesApi = {
             violations: z.array(z.string()),
           })),
         }),
+      },
+    },
+  },
+};
+
+// Reports API
+export const reportsApi = {
+  reports: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/reports',
+      responses: {
+        200: z.array(z.custom<typeof reports.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/reports/:id',
+      responses: {
+        200: z.custom<typeof reports.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/reports',
+      input: createReportSchema,
+      responses: {
+        201: z.custom<typeof reports.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/reports/:id',
+      input: updateReportSchema,
+      responses: {
+        200: z.custom<typeof reports.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/reports/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
       },
     },
   },

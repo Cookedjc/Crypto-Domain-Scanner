@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api, cbomApi, scriptsApi, settingsApi, policiesApi, errorSchemas } from "@shared/routes";
+import { api, cbomApi, scriptsApi, settingsApi, policiesApi, reportsApi, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import tls from "tls";
 import dns from "dns/promises";
@@ -13,6 +13,7 @@ import {
   createUserSchema, updateUserSchema, updateRolePermissionSchema,
   createAuthConfigSchema, updateAuthConfigSchema,
   createSecurityPolicySchema, updateSecurityPolicySchema,
+  createReportSchema, updateReportSchema,
   type CbomComponent, type SecurityPolicy
 } from "@shared/schema";
 import fs from "fs/promises";
@@ -934,6 +935,38 @@ export async function registerRoutes(
       console.error("Policy matching error:", err);
       res.status(500).json({ message: "Failed to match policies" });
     }
+  });
+
+  // ==================== Reports ====================
+  app.get(reportsApi.reports.list.path, async (req, res) => {
+    const allReports = await storage.getReports();
+    res.json(allReports);
+  });
+
+  app.get(reportsApi.reports.get.path, async (req, res) => {
+    const report = await storage.getReport(Number(req.params.id));
+    if (!report) return res.status(404).json({ message: "Report not found" });
+    res.json(report);
+  });
+
+  app.post(reportsApi.reports.create.path, async (req, res) => {
+    const parsed = createReportSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const report = await storage.createReport(parsed.data);
+    res.status(201).json(report);
+  });
+
+  app.patch(reportsApi.reports.update.path, async (req, res) => {
+    const parsed = updateReportSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: parsed.error.message });
+    const updated = await storage.updateReport(Number(req.params.id), parsed.data);
+    if (!updated) return res.status(404).json({ message: "Report not found" });
+    res.json(updated);
+  });
+
+  app.delete(reportsApi.reports.delete.path, async (req, res) => {
+    await storage.deleteReport(Number(req.params.id));
+    res.status(204).send();
   });
 
   // Start scheduler

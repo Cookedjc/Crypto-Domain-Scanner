@@ -2,7 +2,7 @@ import { db } from "./db";
 import { 
   scans, cbomFiles, cbomComponents, 
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
-  users, rolePermissions, authConfig, securityPolicies,
+  users, rolePermissions, authConfig, securityPolicies, reports,
   type InsertScan, type Scan, 
   type CbomFile, type CbomComponent, type InsertCbomFile, type InsertCbomComponent,
   type ScriptVariable, type InsertScriptVariable,
@@ -13,6 +13,7 @@ import {
   type RolePermission, type InsertRolePermission,
   type AuthConfig, type InsertAuthConfig,
   type SecurityPolicy, type InsertSecurityPolicy,
+  type Report, type InsertReport,
   USER_TYPES, MENU_ITEMS
 } from "@shared/schema";
 import { eq, desc, and, inArray, lte, isNull, or } from "drizzle-orm";
@@ -93,6 +94,13 @@ export interface IStorage {
   getSecurityPolicy(id: number): Promise<SecurityPolicy | undefined>;
   updateSecurityPolicy(id: number, data: Partial<InsertSecurityPolicy>): Promise<SecurityPolicy | undefined>;
   deleteSecurityPolicy(id: number): Promise<void>;
+
+  // Reports
+  createReport(report: InsertReport): Promise<Report>;
+  getReports(): Promise<Report[]>;
+  getReport(id: number): Promise<Report | undefined>;
+  updateReport(id: number, data: Partial<InsertReport>): Promise<Report | undefined>;
+  deleteReport(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -453,6 +461,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteSecurityPolicy(id: number): Promise<void> {
     await db.delete(securityPolicies).where(eq(securityPolicies.id, id));
+  }
+
+  // Reports
+  async createReport(report: InsertReport): Promise<Report> {
+    const [created] = await db.insert(reports).values(report).returning();
+    return created;
+  }
+
+  async getReports(): Promise<Report[]> {
+    return await db.select().from(reports).orderBy(desc(reports.updatedAt));
+  }
+
+  async getReport(id: number): Promise<Report | undefined> {
+    const [report] = await db.select().from(reports).where(eq(reports.id, id));
+    return report;
+  }
+
+  async updateReport(id: number, data: Partial<InsertReport>): Promise<Report | undefined> {
+    const [updated] = await db.update(reports)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(reports.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteReport(id: number): Promise<void> {
+    await db.delete(reports).where(eq(reports.id, id));
   }
 }
 

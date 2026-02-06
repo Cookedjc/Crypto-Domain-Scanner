@@ -472,3 +472,41 @@ export const updateSecurityPolicySchema = createSecurityPolicySchema.partial();
 
 export type CreateSecurityPolicyRequest = z.infer<typeof createSecurityPolicySchema>;
 export type UpdateSecurityPolicyRequest = z.infer<typeof updateSecurityPolicySchema>;
+
+// ==================== Reports ====================
+
+export const REPORT_STATUSES = ["draft", "final", "archived"] as const;
+export type ReportStatus = typeof REPORT_STATUSES[number];
+
+export const reports = pgTable("reports", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  content: text("content").notNull().default(""),
+  status: text("status").notNull().default("draft"),
+  includedCbomFileIds: integer("included_cbom_file_ids").array(),
+  includedPolicyIds: integer("included_policy_ids").array(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertReportSchema = createInsertSchema(reports).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type Report = typeof reports.$inferSelect;
+export type InsertReport = typeof reports.$inferInsert;
+
+export const createReportSchema = z.object({
+  title: z.string().min(1, "Report title is required"),
+  content: z.string().default(""),
+  status: z.enum(REPORT_STATUSES).default("draft"),
+  includedCbomFileIds: z.array(z.number()).optional(),
+  includedPolicyIds: z.array(z.number()).optional(),
+});
+
+export const updateReportSchema = createReportSchema.partial();
+
+export type CreateReportRequest = z.infer<typeof createReportSchema>;
+export type UpdateReportRequest = z.infer<typeof updateReportSchema>;

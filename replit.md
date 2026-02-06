@@ -25,6 +25,15 @@ A comprehensive settings page with three tabs:
 - **Authentication Configuration**: Configure OIDC/OAuth providers including Azure AD, Google, Okta, and custom providers with client credentials and redirect URIs
 - **RBAC Controls**: Role-based access control matrix with View/Edit/Delete permissions per user type and menu item; Admin permissions are locked and cannot be modified
 
+### Reports
+A free-form report creation system for security assessments:
+- Create, edit, save, and delete reports with title, content, and status (draft/final/archived)
+- Insert CBOM component summaries and detailed tables directly into reports
+- Insert security policy summaries
+- Run and insert live policy compliance matching results showing violations and compliant components
+- Export reports as text files and copy to clipboard
+- Reports are stored in the database for persistence
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -83,6 +92,8 @@ Preferred communication style: Simple, everyday language.
 - `users`: User accounts with email, display name, and user type
 - `role_permissions`: RBAC permission matrix for menu access control
 - `auth_config`: OIDC/OAuth provider configurations
+- `security_policies`: Cryptographic control policies (IS-22/ISO 27001 Annex A 8.24)
+- `reports`: Free-form security assessment reports with CBOM/policy data insertion
 
 ### API Contract Pattern
 The `shared/routes.ts` file defines typed API contracts using Zod schemas, ensuring type safety between frontend and backend. This includes request/response schemas and URL builders.

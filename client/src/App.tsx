@@ -8,6 +8,7 @@ import ScanDetails from "@/pages/scan-details";
 import CbomPage from "@/pages/cbom";
 import ScriptsPage from "@/pages/scripts";
 import PoliciesPage from "@/pages/policies";
+import ReportsPage from "@/pages/reports";
 import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/cbom" component={CbomPage} />
       <Route path="/scripts" component={ScriptsPage} />
       <Route path="/policies" component={PoliciesPage} />
+      <Route path="/reports" component={ReportsPage} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
