@@ -1058,6 +1058,18 @@ export async function registerRoutes(
       }
 
       const resolvedPath = path.resolve(fullPath);
+
+      const dirs = await storage.getOutputDirectories();
+      const enabledDirs = dirs.filter(d => d.enabled);
+      const isWithinConfiguredDir = enabledDirs.some(d => {
+        const dirPath = path.resolve(d.path);
+        return resolvedPath.startsWith(dirPath + path.sep) || resolvedPath === dirPath;
+      });
+
+      if (!isWithinConfiguredDir) {
+        return res.status(403).json({ message: "File path is not within a configured, enabled directory" });
+      }
+
       const content = await fs.readFile(resolvedPath, 'utf-8');
       const parsed = JSON.parse(content);
 

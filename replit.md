@@ -11,6 +11,7 @@ The platform includes a Cryptographic Bill of Materials (CBOM) Manager that allo
 - Drag-and-drop file upload
 - Sortable and filterable component tables
 - Deduplication based on selected fields
+- **Output Directories**: Monitor filesystem paths for new CBOM files with add/enable/disable/delete controls, directory scanning to discover files, direct import of CycloneDX JSON files, and a non-functional "Format to CycloneDX" button. Import validates file paths are within configured, enabled directories for security.
 
 ### Scripts Manager
 A comprehensive script scheduling system for automating REST API calls and CLI commands:
@@ -94,6 +95,7 @@ Preferred communication style: Simple, everyday language.
 - `auth_config`: OIDC/OAuth provider configurations
 - `security_policies`: Cryptographic control policies (IS-22/ISO 27001 Annex A 8.24)
 - `reports`: Free-form security assessment reports with CBOM/policy data insertion
+- `output_directories`: Monitored filesystem paths for CBOM file discovery
 
 ### API Contract Pattern
 The `shared/routes.ts` file defines typed API contracts using Zod schemas, ensuring type safety between frontend and backend. This includes request/response schemas and URL builders.

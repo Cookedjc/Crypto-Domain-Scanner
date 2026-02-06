@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from "react";
 import Layout from "@/components/layout";
-import { useCbomFiles, useCbomComponents, useUploadCbom, useDeleteCbomFile, useDeduplicateCbom } from "@/hooks/use-cbom";
+import { useCbomFiles, useCbomComponents, useUploadCbom, useDeleteCbomFile, useDeduplicateCbom, useOutputDirectories, useCreateOutputDirectory, useUpdateOutputDirectory, useDeleteOutputDirectory, useScanDirectories, useImportDirectoryFile } from "@/hooks/use-cbom";
 import { useMatchPolicies } from "@/hooks/use-policies";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,8 +37,21 @@ import {
   Unlock,
   Shield,
   Scan,
+  FolderOpen,
+  FolderPlus,
+  FolderSync,
+  Plus,
+  Power,
+  PowerOff,
+  Download,
+  FileType,
+  Clock,
+  HardDrive,
+  Eye,
 } from "lucide-react";
-import type { CbomComponent } from "@shared/schema";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import type { CbomComponent, OutputDirectory } from "@shared/schema";
 
 const SORTABLE_FIELDS = [
   { key: "name", label: "Name" },
@@ -205,6 +218,13 @@ export default function CbomPage() {
   const dedupMutation = useDeduplicateCbom();
   const matchMutation = useMatchPolicies();
 
+  const { data: outputDirs, isLoading: dirsLoading } = useOutputDirectories();
+  const createDirMutation = useCreateOutputDirectory();
+  const updateDirMutation = useUpdateOutputDirectory();
+  const deleteDirMutation = useDeleteOutputDirectory();
+  const scanMutation = useScanDirectories();
+  const importFileMutation = useImportDirectoryFile();
+
   const [activeTab, setActiveTab] = useState("components");
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<string>("name");
@@ -215,6 +235,10 @@ export default function CbomPage() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [complianceFilter, setComplianceFilter] = useState<string | null>(null);
   const [policyMatchResults, setPolicyMatchResults] = useState<any>(null);
+  const [showAddDir, setShowAddDir] = useState(false);
+  const [newDirLabel, setNewDirLabel] = useState("");
+  const [newDirPath, setNewDirPath] = useState("");
+  const [scanResults, setScanResults] = useState<any>(null);
 
   const policyViolationsByComponent = useMemo(() => {
     if (!policyMatchResults?.results) return new Map<number, any[]>();
@@ -542,6 +566,10 @@ export default function CbomPage() {
               <ShieldCheck className="w-4 h-4" />
               Quantum-Safe Compliance
             </TabsTrigger>
+            <TabsTrigger value="directories" className="gap-2" data-testid="tab-directories">
+              <FolderOpen className="w-4 h-4" />
+              Output Directories
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="components">
@@ -805,6 +833,252 @@ export default function CbomPage() {
                 </table>
               </div>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="directories">
+            <div className="space-y-6">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Monitored Directories</h2>
+                  <p className="text-sm text-muted-foreground">Configure filesystem paths to monitor for new CBOM files</p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        const result = await scanMutation.mutateAsync();
+                        setScanResults(result);
+                        toast({ title: "Scan complete", description: `Found ${result.totalFiles} files across ${result.directories.length} directories.` });
+                      } catch {
+                        toast({ title: "Scan failed", description: "Failed to scan directories", variant: "destructive" });
+                      }
+                    }}
+                    disabled={scanMutation.isPending || !outputDirs?.some(d => d.enabled)}
+                    className="gap-2"
+                    data-testid="button-scan-directories"
+                  >
+                    {scanMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderSync className="w-4 h-4" />}
+                    Scan Directories
+                  </Button>
+                  <Button
+                    onClick={() => setShowAddDir(true)}
+                    className="gap-2"
+                    data-testid="button-add-directory"
+                  >
+                    <FolderPlus className="w-4 h-4" />
+                    Add Directory
+                  </Button>
+                </div>
+              </div>
+
+              {showAddDir && (
+                <Card className="border-border/50">
+                  <CardContent className="p-4 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="dir-label">Label</Label>
+                        <Input
+                          id="dir-label"
+                          placeholder="e.g., Scanner Output"
+                          value={newDirLabel}
+                          onChange={(e) => setNewDirLabel(e.target.value)}
+                          data-testid="input-dir-label"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="dir-path">Directory Path</Label>
+                        <Input
+                          id="dir-path"
+                          placeholder="e.g., /tmp/scanner-output"
+                          value={newDirPath}
+                          onChange={(e) => setNewDirPath(e.target.value)}
+                          data-testid="input-dir-path"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" onClick={() => { setShowAddDir(false); setNewDirLabel(""); setNewDirPath(""); }}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          if (!newDirLabel.trim() || !newDirPath.trim()) {
+                            toast({ title: "Missing fields", description: "Both label and path are required.", variant: "destructive" });
+                            return;
+                          }
+                          try {
+                            await createDirMutation.mutateAsync({ label: newDirLabel.trim(), path: newDirPath.trim() });
+                            toast({ title: "Directory added", description: `${newDirLabel} has been added.` });
+                            setShowAddDir(false);
+                            setNewDirLabel("");
+                            setNewDirPath("");
+                          } catch {
+                            toast({ title: "Error", description: "Failed to add directory", variant: "destructive" });
+                          }
+                        }}
+                        disabled={createDirMutation.isPending}
+                        data-testid="button-save-directory"
+                      >
+                        {createDirMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        Save Directory
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {dirsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : !outputDirs?.length ? (
+                <Card className="border-border/50 border-dashed">
+                  <CardContent className="p-8 text-center">
+                    <FolderOpen className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                    <p className="text-lg font-medium mb-1">No directories configured</p>
+                    <p className="text-sm text-muted-foreground">Add a directory path to start monitoring for new CBOM files</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {outputDirs.map(dir => (
+                    <Card key={dir.id} className="border-border/50" data-testid={`dir-card-${dir.id}`}>
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between gap-4 flex-wrap">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className={`p-2 rounded-lg ${dir.enabled ? "bg-emerald-500/10" : "bg-muted/30"}`}>
+                              <FolderOpen className={`w-5 h-5 ${dir.enabled ? "text-emerald-500" : "text-muted-foreground"}`} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium truncate">{dir.label}</p>
+                              <p className="text-xs text-muted-foreground font-mono truncate">{dir.path}</p>
+                              {dir.lastScannedAt && (
+                                <p className="text-xs text-muted-foreground">
+                                  <Clock className="w-3 h-3 inline mr-1" />
+                                  Last scanned {formatDistanceToNow(new Date(dir.lastScannedAt), { addSuffix: true })}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                checked={dir.enabled}
+                                onCheckedChange={async (checked) => {
+                                  await updateDirMutation.mutateAsync({ id: dir.id, enabled: checked });
+                                }}
+                                data-testid={`switch-dir-${dir.id}`}
+                              />
+                              <span className="text-xs text-muted-foreground">{dir.enabled ? "Enabled" : "Disabled"}</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="text-rose-500"
+                              onClick={async () => {
+                                if (confirm(`Delete directory "${dir.label}"?`)) {
+                                  await deleteDirMutation.mutateAsync(dir.id);
+                                  toast({ title: "Deleted", description: `${dir.label} has been removed.` });
+                                }
+                              }}
+                              data-testid={`button-delete-dir-${dir.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+
+              {scanResults && scanResults.directories && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <h3 className="text-lg font-semibold">Scan Results</h3>
+                    <Badge variant="secondary" className="font-mono">
+                      {scanResults.totalFiles} files found
+                    </Badge>
+                  </div>
+                  {scanResults.directories.map((dirResult: any) => (
+                    <Card key={dirResult.directoryId} className="border-border/50" data-testid={`scan-result-${dirResult.directoryId}`}>
+                      <CardHeader className="pb-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <HardDrive className="w-4 h-4" />
+                            {dirResult.directoryLabel}
+                          </CardTitle>
+                          <span className="text-xs text-muted-foreground font-mono">{dirResult.directoryPath}</span>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        {dirResult.files.length === 0 ? (
+                          <p className="text-sm text-muted-foreground py-2">No files found in this directory</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {dirResult.files.map((file: any, idx: number) => (
+                              <div
+                                key={idx}
+                                className="flex items-center justify-between gap-3 p-3 bg-muted/30 rounded-lg"
+                                data-testid={`scan-file-${idx}`}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <FileJson className={`w-5 h-5 shrink-0 ${file.isJson ? "text-primary" : "text-muted-foreground"}`} />
+                                  <div className="min-w-0">
+                                    <p className="font-medium text-sm truncate">{file.filename}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                      {(file.size / 1024).toFixed(1)} KB | Modified {formatDistanceToNow(new Date(file.modifiedAt), { addSuffix: true })}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {file.isJson && (
+                                    <>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        disabled
+                                        className="gap-1"
+                                        data-testid={`button-format-${idx}`}
+                                      >
+                                        <FileType className="w-3 h-3" />
+                                        Format to CycloneDX
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        onClick={async () => {
+                                          try {
+                                            const result = await importFileMutation.mutateAsync({ fullPath: file.fullPath, filename: file.filename });
+                                            toast({ title: "Imported", description: `${file.filename}: ${result.componentsAdded} components added.` });
+                                          } catch {
+                                            toast({ title: "Import failed", description: `Failed to import ${file.filename}`, variant: "destructive" });
+                                          }
+                                        }}
+                                        disabled={importFileMutation.isPending}
+                                        className="gap-1"
+                                        data-testid={`button-import-${idx}`}
+                                      >
+                                        {importFileMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+                                        Import
+                                      </Button>
+                                    </>
+                                  )}
+                                  {!file.isJson && (
+                                    <Badge variant="outline" className="text-xs">Non-JSON</Badge>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
 
