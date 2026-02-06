@@ -372,3 +372,103 @@ export type UpdateUserRequest = z.infer<typeof updateUserSchema>;
 export type UpdateRolePermissionRequest = z.infer<typeof updateRolePermissionSchema>;
 export type CreateAuthConfigRequest = z.infer<typeof createAuthConfigSchema>;
 export type UpdateAuthConfigRequest = z.infer<typeof updateAuthConfigSchema>;
+
+// ==================== Security Policies ====================
+
+export const ASSET_CATEGORIES = [
+  "mobile_devices",
+  "removable_media",
+  "servers_storage",
+  "email",
+  "wireless_networks",
+  "data_in_transit",
+  "backup_media",
+  "databases",
+  "cloud_services",
+  "iot_devices",
+  "custom",
+] as const;
+export type AssetCategory = typeof ASSET_CATEGORIES[number];
+
+export const DATA_CLASSIFICATIONS = [
+  "confidential",
+  "internal",
+  "public",
+] as const;
+export type DataClassification = typeof DATA_CLASSIFICATIONS[number];
+
+export const POLICY_STATUSES = ["active", "draft", "disabled"] as const;
+export type PolicyStatus = typeof POLICY_STATUSES[number];
+
+export const ASSET_CATEGORY_LABELS: Record<AssetCategory, string> = {
+  mobile_devices: "Mobile Devices",
+  removable_media: "Removable Media",
+  servers_storage: "Servers & Storage",
+  email: "Email",
+  wireless_networks: "Wireless Networks",
+  data_in_transit: "Data in Transit",
+  backup_media: "Backup Media",
+  databases: "Databases",
+  cloud_services: "Cloud Services",
+  iot_devices: "IoT Devices",
+  custom: "Custom",
+};
+
+export const DATA_CLASSIFICATION_LABELS: Record<DataClassification, string> = {
+  confidential: "Confidential / Restricted",
+  internal: "Internal / Protected",
+  public: "Public",
+};
+
+export const securityPolicies = pgTable("security_policies", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  assetCategory: text("asset_category").notNull(),
+  dataClassification: text("data_classification").notNull(),
+  allowedAlgorithms: text("allowed_algorithms").array(),
+  prohibitedAlgorithms: text("prohibited_algorithms").array(),
+  minimumKeySize: integer("minimum_key_size"),
+  requiredProtocols: text("required_protocols").array(),
+  keyManagementPolicy: text("key_management_policy"),
+  encryptionAtRest: boolean("encryption_at_rest").default(false),
+  encryptionInTransit: boolean("encryption_in_transit").default(false),
+  pqcRequired: boolean("pqc_required").default(false),
+  minimumNistLevel: integer("minimum_nist_level"),
+  status: text("status").notNull().default("draft"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertSecurityPolicySchema = createInsertSchema(securityPolicies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type SecurityPolicy = typeof securityPolicies.$inferSelect;
+export type InsertSecurityPolicy = typeof securityPolicies.$inferInsert;
+
+export const createSecurityPolicySchema = z.object({
+  name: z.string().min(1, "Policy name is required"),
+  description: z.string().optional(),
+  assetCategory: z.enum(ASSET_CATEGORIES),
+  dataClassification: z.enum(DATA_CLASSIFICATIONS),
+  allowedAlgorithms: z.array(z.string()).optional(),
+  prohibitedAlgorithms: z.array(z.string()).optional(),
+  minimumKeySize: z.number().min(0).optional().nullable(),
+  requiredProtocols: z.array(z.string()).optional(),
+  keyManagementPolicy: z.string().optional(),
+  encryptionAtRest: z.boolean().default(false),
+  encryptionInTransit: z.boolean().default(false),
+  pqcRequired: z.boolean().default(false),
+  minimumNistLevel: z.number().min(0).max(5).optional().nullable(),
+  status: z.enum(POLICY_STATUSES).default("draft"),
+  notes: z.string().optional(),
+});
+
+export const updateSecurityPolicySchema = createSecurityPolicySchema.partial();
+
+export type CreateSecurityPolicyRequest = z.infer<typeof createSecurityPolicySchema>;
+export type UpdateSecurityPolicyRequest = z.infer<typeof updateSecurityPolicySchema>;

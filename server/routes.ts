@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api, cbomApi, scriptsApi, settingsApi, errorSchemas } from "@shared/routes";
+import { api, cbomApi, scriptsApi, settingsApi, policiesApi, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import tls from "tls";
 import dns from "dns/promises";
@@ -11,7 +11,9 @@ import {
   cbomUploadSchema, cbomDeduplicateSchema, type InsertCbomComponent,
   createScriptSchema, updateScriptSchema, createVariableSchema, createScheduleSchema,
   createUserSchema, updateUserSchema, updateRolePermissionSchema,
-  createAuthConfigSchema, updateAuthConfigSchema
+  createAuthConfigSchema, updateAuthConfigSchema,
+  createSecurityPolicySchema, updateSecurityPolicySchema,
+  type CbomComponent, type SecurityPolicy
 } from "@shared/schema";
 import fs from "fs/promises";
 import path from "path";
@@ -845,10 +847,175 @@ export async function registerRoutes(
     res.status(204).end();
   });
 
+  // === Security Policies Routes ===
+  app.get(policiesApi.policies.list.path, async (req, res) => {
+    const policies = await storage.getSecurityPolicies();
+    res.json(policies);
+  });
+
+  app.get(policiesApi.policies.get.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const policy = await storage.getSecurityPolicy(id);
+    if (!policy) {
+      return res.status(404).json({ message: "Policy not found" });
+    }
+    res.json(policy);
+  });
+
+  app.post(policiesApi.policies.create.path, async (req, res) => {
+    const parsed = createSecurityPolicySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    const policy = await storage.createSecurityPolicy(parsed.data);
+    res.status(201).json(policy);
+  });
+
+  app.patch(policiesApi.policies.update.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const parsed = updateSecurityPolicySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    const existing = await storage.getSecurityPolicy(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Policy not found" });
+    }
+    const policy = await storage.updateSecurityPolicy(id, parsed.data);
+    res.json(policy);
+  });
+
+  app.delete(policiesApi.policies.delete.path, async (req, res) => {
+    const id = Number(req.params.id);
+    const existing = await storage.getSecurityPolicy(id);
+    if (!existing) {
+      return res.status(404).json({ message: "Policy not found" });
+    }
+    await storage.deleteSecurityPolicy(id);
+    res.status(204).end();
+  });
+
+  app.post(policiesApi.policies.match.path, async (req, res) => {
+    try {
+      const policies = await storage.getSecurityPolicies();
+      const activePolicies = policies.filter(p => p.status === "active");
+      const components = await storage.getCbomComponents();
+
+      const results: Array<{
+        componentId: number;
+        componentName: string;
+        policyId: number;
+        policyName: string;
+        compliant: boolean;
+        violations: string[];
+      }> = [];
+
+      for (const component of components) {
+        for (const policy of activePolicies) {
+          const matchResult = matchComponentToPolicy(component, policy);
+          if (matchResult.matched) {
+            results.push({
+              componentId: component.id,
+              componentName: component.name,
+              policyId: policy.id,
+              policyName: policy.name,
+              compliant: matchResult.violations.length === 0,
+              violations: matchResult.violations,
+            });
+          }
+        }
+      }
+
+      res.json({
+        matched: results.length,
+        results,
+      });
+    } catch (err) {
+      console.error("Policy matching error:", err);
+      res.status(500).json({ message: "Failed to match policies" });
+    }
+  });
+
   // Start scheduler
   startScheduler();
 
   return httpServer;
+}
+
+function matchComponentToPolicy(
+  component: CbomComponent,
+  policy: SecurityPolicy
+): { matched: boolean; violations: string[] } {
+  const violations: string[] = [];
+  const compName = (component.name || "").toUpperCase();
+  const compType = (component.componentType || "").toLowerCase();
+
+  const assetTypeMatches: Record<string, string[]> = {
+    mobile_devices: ["mobile", "android", "ios", "device"],
+    removable_media: ["usb", "removable", "portable", "external"],
+    servers_storage: ["server", "storage", "database", "algorithm", "library"],
+    email: ["email", "smtp", "imap", "mail", "s/mime"],
+    wireless_networks: ["wireless", "wifi", "wpa", "wep", "802.11"],
+    data_in_transit: ["tls", "ssl", "transport", "vpn", "ipsec", "https", "algorithm"],
+    backup_media: ["backup", "archive", "tape"],
+    databases: ["database", "db", "sql", "nosql", "algorithm"],
+    cloud_services: ["cloud", "saas", "paas", "iaas"],
+    iot_devices: ["iot", "sensor", "embedded", "scada"],
+    custom: [],
+  };
+
+  const categoryKeywords = assetTypeMatches[policy.assetCategory] || [];
+  const isRelevant = categoryKeywords.length === 0 || categoryKeywords.some(kw =>
+    compName.toLowerCase().includes(kw) || compType.includes(kw)
+  );
+
+  if (!isRelevant) {
+    return { matched: false, violations: [] };
+  }
+
+  if (policy.allowedAlgorithms && policy.allowedAlgorithms.length > 0) {
+    const allowed = policy.allowedAlgorithms.some(alg =>
+      compName.includes(alg.toUpperCase())
+    );
+    if (!allowed && compType === "algorithm") {
+      violations.push(`Algorithm "${component.name}" is not in the allowed list: ${policy.allowedAlgorithms.join(", ")}`);
+    }
+  }
+
+  if (policy.prohibitedAlgorithms && policy.prohibitedAlgorithms.length > 0) {
+    const prohibited = policy.prohibitedAlgorithms.find(alg =>
+      compName.includes(alg.toUpperCase())
+    );
+    if (prohibited) {
+      violations.push(`Algorithm "${component.name}" matches prohibited algorithm: ${prohibited}`);
+    }
+  }
+
+  if (policy.minimumKeySize && component.nistQuantumSecurityLevel !== null) {
+    const impliedKeySize = (component.nistQuantumSecurityLevel || 0) * 64;
+    if (impliedKeySize < policy.minimumKeySize) {
+      violations.push(`Key size (estimated ${impliedKeySize}-bit from NIST Level ${component.nistQuantumSecurityLevel}) is below minimum ${policy.minimumKeySize}-bit`);
+    }
+  }
+
+  if (policy.minimumNistLevel && policy.minimumNistLevel > 0) {
+    const compLevel = component.nistQuantumSecurityLevel || 0;
+    if (compLevel < policy.minimumNistLevel && compType === "algorithm") {
+      violations.push(`NIST Quantum Security Level ${compLevel} is below required minimum Level ${policy.minimumNistLevel}`);
+    }
+  }
+
+  if (policy.pqcRequired) {
+    const pqcAlgorithms = ["ML-KEM", "KYBER", "ML-DSA", "DILITHIUM", "SPHINCS", "FALCON", "XMSS", "LMS"];
+    const isPqc = pqcAlgorithms.some(alg => compName.includes(alg));
+    const isSymmetric = ["AES", "SHA", "HMAC", "CHACHA", "BLAKE"].some(alg => compName.includes(alg));
+
+    if (!isPqc && !isSymmetric && compType === "algorithm") {
+      violations.push(`Post-quantum cryptography is required but "${component.name}" is not a PQC algorithm`);
+    }
+  }
+
+  return { matched: true, violations };
 }
 
 // Helper function to execute a script command

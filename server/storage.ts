@@ -2,7 +2,7 @@ import { db } from "./db";
 import { 
   scans, cbomFiles, cbomComponents, 
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
-  users, rolePermissions, authConfig,
+  users, rolePermissions, authConfig, securityPolicies,
   type InsertScan, type Scan, 
   type CbomFile, type CbomComponent, type InsertCbomFile, type InsertCbomComponent,
   type ScriptVariable, type InsertScriptVariable,
@@ -12,6 +12,7 @@ import {
   type User, type InsertUser,
   type RolePermission, type InsertRolePermission,
   type AuthConfig, type InsertAuthConfig,
+  type SecurityPolicy, type InsertSecurityPolicy,
   USER_TYPES, MENU_ITEMS
 } from "@shared/schema";
 import { eq, desc, and, inArray, lte, isNull, or } from "drizzle-orm";
@@ -85,6 +86,13 @@ export interface IStorage {
   updateAuthConfig(id: number, data: Partial<InsertAuthConfig>): Promise<AuthConfig | undefined>;
   deleteAuthConfig(id: number): Promise<void>;
   getDefaultAuthConfig(): Promise<AuthConfig | undefined>;
+
+  // Security Policies
+  createSecurityPolicy(policy: InsertSecurityPolicy): Promise<SecurityPolicy>;
+  getSecurityPolicies(): Promise<SecurityPolicy[]>;
+  getSecurityPolicy(id: number): Promise<SecurityPolicy | undefined>;
+  updateSecurityPolicy(id: number, data: Partial<InsertSecurityPolicy>): Promise<SecurityPolicy | undefined>;
+  deleteSecurityPolicy(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -418,6 +426,33 @@ export class DatabaseStorage implements IStorage {
   async getDefaultAuthConfig(): Promise<AuthConfig | undefined> {
     const [config] = await db.select().from(authConfig).where(eq(authConfig.isDefault, true));
     return config;
+  }
+
+  // Security Policies
+  async createSecurityPolicy(policy: InsertSecurityPolicy): Promise<SecurityPolicy> {
+    const [created] = await db.insert(securityPolicies).values(policy).returning();
+    return created;
+  }
+
+  async getSecurityPolicies(): Promise<SecurityPolicy[]> {
+    return await db.select().from(securityPolicies).orderBy(desc(securityPolicies.createdAt));
+  }
+
+  async getSecurityPolicy(id: number): Promise<SecurityPolicy | undefined> {
+    const [policy] = await db.select().from(securityPolicies).where(eq(securityPolicies.id, id));
+    return policy;
+  }
+
+  async updateSecurityPolicy(id: number, data: Partial<InsertSecurityPolicy>): Promise<SecurityPolicy | undefined> {
+    const [updated] = await db.update(securityPolicies)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(securityPolicies.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteSecurityPolicy(id: number): Promise<void> {
+    await db.delete(securityPolicies).where(eq(securityPolicies.id, id));
   }
 }
 

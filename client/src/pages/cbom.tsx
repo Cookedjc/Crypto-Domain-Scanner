@@ -1,12 +1,14 @@
 import { useState, useCallback, useMemo } from "react";
 import Layout from "@/components/layout";
 import { useCbomFiles, useCbomComponents, useUploadCbom, useDeleteCbomFile, useDeduplicateCbom } from "@/hooks/use-cbom";
+import { useMatchPolicies } from "@/hooks/use-policies";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
@@ -33,6 +35,8 @@ import {
   Info,
   Lock,
   Unlock,
+  Shield,
+  Scan,
 } from "lucide-react";
 import type { CbomComponent } from "@shared/schema";
 
@@ -199,6 +203,7 @@ export default function CbomPage() {
   const uploadMutation = useUploadCbom();
   const deleteMutation = useDeleteCbomFile();
   const dedupMutation = useDeduplicateCbom();
+  const matchMutation = useMatchPolicies();
 
   const [activeTab, setActiveTab] = useState("components");
   const [search, setSearch] = useState("");
@@ -209,6 +214,28 @@ export default function CbomPage() {
   const [dedupFields, setDedupFields] = useState<string[]>(["name", "componentType"]);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [complianceFilter, setComplianceFilter] = useState<string | null>(null);
+  const [policyMatchResults, setPolicyMatchResults] = useState<any>(null);
+
+  const policyViolationsByComponent = useMemo(() => {
+    if (!policyMatchResults?.results) return new Map<number, any[]>();
+    const map = new Map<number, any[]>();
+    for (const result of policyMatchResults.results) {
+      const existing = map.get(result.componentId) || [];
+      existing.push(result);
+      map.set(result.componentId, existing);
+    }
+    return map;
+  }, [policyMatchResults]);
+
+  const handlePolicyMatch = async () => {
+    try {
+      const result = await matchMutation.mutateAsync();
+      setPolicyMatchResults(result);
+      toast({ title: "Policy matching complete", description: `${result.matched} component-policy matches found.` });
+    } catch {
+      toast({ title: "Error", description: "Failed to run policy matching", variant: "destructive" });
+    }
+  };
 
   // Calculate compliance results for all components
   const complianceResults = useMemo(() => {
@@ -669,13 +696,27 @@ export default function CbomPage() {
             {/* Compliance Legend */}
             <Card className="border-border/50 mb-6">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm flex items-center gap-2">
-                  <Lock className="w-4 h-4" />
-                  Quantum-Safe Compliance Check
-                </CardTitle>
-                <CardDescription>
-                  Based on CBOMkit's quantum-safe policy, analyzing cryptographic components for post-quantum readiness
-                </CardDescription>
+                <div className="flex items-center justify-between gap-4 flex-wrap">
+                  <div>
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Lock className="w-4 h-4" />
+                      Quantum-Safe Compliance Check
+                    </CardTitle>
+                    <CardDescription>
+                      Based on CBOMkit's quantum-safe policy, analyzing cryptographic components for post-quantum readiness
+                    </CardDescription>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handlePolicyMatch}
+                    disabled={matchMutation.isPending || !components?.length}
+                    className="gap-2 shrink-0"
+                    data-testid="button-check-policies"
+                  >
+                    {matchMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Scan className="w-4 h-4" />}
+                    Check Policies
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
@@ -733,28 +774,30 @@ export default function CbomPage() {
                       <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Component</th>
                       <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Type</th>
                       <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Analysis</th>
+                      <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Policy</th>
                       <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Recommendation</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border/30">
                     {isLoading ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                           <Loader2 className="w-6 h-6 mx-auto animate-spin mb-2" />
                           Analyzing components...
                         </td>
                       </tr>
                     ) : filteredComponents.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                           {components?.length === 0 ? "No components loaded. Upload a CBOM file to analyze." : "No matching components found."}
                         </td>
                       </tr>
                     ) : (
                       filteredComponents.map((comp) => {
                         const result = complianceResults.get(comp.id);
+                        const policyMatches = policyViolationsByComponent.get(comp.id);
                         return (
-                          <ComplianceRow key={comp.id} component={comp} result={result} />
+                          <ComplianceRow key={comp.id} component={comp} result={result} policyMatches={policyMatches} />
                         );
                       })
                     )}
@@ -846,7 +889,7 @@ function ComponentRow({ component }: { component: CbomComponent }) {
   );
 }
 
-function ComplianceRow({ component, result }: { component: CbomComponent; result?: ComplianceResult }) {
+function ComplianceRow({ component, result, policyMatches }: { component: CbomComponent; result?: ComplianceResult; policyMatches?: any[] }) {
   const statusConfig = {
     "quantum-safe": {
       icon: CheckCircle2,
@@ -877,6 +920,9 @@ function ComplianceRow({ component, result }: { component: CbomComponent; result
   const config = statusConfig[result?.status || "unknown"];
   const Icon = config.icon;
 
+  const hasViolations = policyMatches?.some((m: any) => !m.compliant);
+  const allCompliant = policyMatches?.length && policyMatches.every((m: any) => m.compliant);
+
   return (
     <tr className="hover:bg-muted/20 transition-colors" data-testid={`row-compliance-${component.id}`}>
       <td className="px-4 py-3">
@@ -893,6 +939,45 @@ function ComplianceRow({ component, result }: { component: CbomComponent; result
       </td>
       <td className="px-4 py-3 text-sm text-muted-foreground max-w-xs truncate" title={result?.reason}>
         {result?.reason || "-"}
+      </td>
+      <td className="px-4 py-3">
+        {!policyMatches ? (
+          <span className="text-xs text-muted-foreground">-</span>
+        ) : allCompliant ? (
+          <div className="flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+            <span className="text-xs text-emerald-500">
+              {policyMatches.length} {policyMatches.length === 1 ? "policy" : "policies"} passed
+            </span>
+          </div>
+        ) : hasViolations ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1 cursor-help">
+                <ShieldX className="w-3.5 h-3.5 text-rose-500" />
+                <span className="text-xs text-rose-500">
+                  {policyMatches.filter((m: any) => !m.compliant).length} violation{policyMatches.filter((m: any) => !m.compliant).length > 1 ? "s" : ""}
+                </span>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="max-w-sm">
+              <div className="space-y-1.5">
+                {policyMatches.filter((m: any) => !m.compliant).map((m: any, i: number) => (
+                  <div key={i} className="text-xs">
+                    <span className="font-medium">{m.policyName}:</span>
+                    <ul className="list-disc pl-3 mt-0.5">
+                      {m.violations.map((v: string, j: number) => (
+                        <li key={j}>{v}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="text-xs text-muted-foreground">No matches</span>
+        )}
       </td>
       <td className="px-4 py-3 text-sm text-muted-foreground max-w-xs">
         {result?.recommendation ? (

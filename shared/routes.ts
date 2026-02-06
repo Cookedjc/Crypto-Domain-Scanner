@@ -2,10 +2,11 @@ import { z } from 'zod';
 import { 
   scans, insertScanSchema, scanRequestSchema, cbomFiles, cbomComponents,
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
-  users, rolePermissions, authConfig,
+  users, rolePermissions, authConfig, securityPolicies,
   createScriptSchema, createVariableSchema, createScheduleSchema,
   createUserSchema, updateUserSchema, updateRolePermissionSchema,
-  createAuthConfigSchema, updateAuthConfigSchema
+  createAuthConfigSchema, updateAuthConfigSchema,
+  createSecurityPolicySchema, updateSecurityPolicySchema
 } from './schema';
 
 export const errorSchemas = {
@@ -364,6 +365,70 @@ export const settingsApi = {
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
+      },
+    },
+  },
+};
+
+// Security Policies API
+export const policiesApi = {
+  policies: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/policies',
+      responses: {
+        200: z.array(z.custom<typeof securityPolicies.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/policies/:id',
+      responses: {
+        200: z.custom<typeof securityPolicies.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/policies',
+      input: createSecurityPolicySchema,
+      responses: {
+        201: z.custom<typeof securityPolicies.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/policies/:id',
+      input: updateSecurityPolicySchema,
+      responses: {
+        200: z.custom<typeof securityPolicies.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/policies/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    match: {
+      method: 'POST' as const,
+      path: '/api/policies/match',
+      responses: {
+        200: z.object({
+          matched: z.number(),
+          results: z.array(z.object({
+            componentId: z.number(),
+            componentName: z.string(),
+            policyId: z.number(),
+            policyName: z.string(),
+            compliant: z.boolean(),
+            violations: z.array(z.string()),
+          })),
+        }),
       },
     },
   },
