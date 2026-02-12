@@ -365,46 +365,57 @@ export class DatabaseStorage implements IStorage {
 
   async initializeDefaultPermissions(): Promise<void> {
     const existing = await this.getRolePermissions();
-    if (existing.length > 0) return;
 
-    const defaultPermissions: InsertRolePermission[] = [];
-    
-    for (const userType of USER_TYPES) {
-      for (const menuItem of MENU_ITEMS) {
-        let canView = true;
-        let canEdit = false;
-        let canDelete = false;
-        
-        if (userType === 'admin') {
-          canEdit = true;
-          canDelete = true;
-        } else if (userType === 'superuser') {
-          canEdit = true;
-          canDelete = true;
-          if (menuItem === 'settings') {
-            canEdit = false;
-            canDelete = false;
-          }
-        } else if (userType === 'user') {
-          canEdit = menuItem !== 'settings';
-          canDelete = false;
-        } else if (userType === 'viewer') {
-          canView = menuItem !== 'settings';
+    const getDefaults = (userType: string, menuItem: string) => {
+      let canView = true;
+      let canEdit = false;
+      let canDelete = false;
+      
+      if (userType === 'admin') {
+        canEdit = true;
+        canDelete = true;
+      } else if (userType === 'superuser') {
+        canEdit = true;
+        canDelete = true;
+        if (menuItem === 'settings') {
           canEdit = false;
           canDelete = false;
         }
-        
-        defaultPermissions.push({
-          userType,
-          menuItem,
-          canView,
-          canEdit,
-          canDelete,
-        });
+      } else if (userType === 'user') {
+        canEdit = menuItem !== 'settings';
+        canDelete = false;
+      } else if (userType === 'viewer') {
+        canView = menuItem !== 'settings';
+        canEdit = false;
+        canDelete = false;
+      }
+      return { canView, canEdit, canDelete };
+    };
+
+    if (existing.length === 0) {
+      const defaultPermissions: InsertRolePermission[] = [];
+      for (const userType of USER_TYPES) {
+        for (const menuItem of MENU_ITEMS) {
+          const { canView, canEdit, canDelete } = getDefaults(userType, menuItem);
+          defaultPermissions.push({ userType, menuItem, canView, canEdit, canDelete });
+        }
+      }
+      await db.insert(rolePermissions).values(defaultPermissions);
+    } else {
+      const missingPermissions: InsertRolePermission[] = [];
+      for (const userType of USER_TYPES) {
+        for (const menuItem of MENU_ITEMS) {
+          const exists = existing.some(p => p.userType === userType && p.menuItem === menuItem);
+          if (!exists) {
+            const { canView, canEdit, canDelete } = getDefaults(userType, menuItem);
+            missingPermissions.push({ userType, menuItem, canView, canEdit, canDelete });
+          }
+        }
+      }
+      if (missingPermissions.length > 0) {
+        await db.insert(rolePermissions).values(missingPermissions);
       }
     }
-    
-    await db.insert(rolePermissions).values(defaultPermissions);
   }
 
   // Auth Configuration

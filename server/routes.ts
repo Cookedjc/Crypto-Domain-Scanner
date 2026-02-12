@@ -939,6 +939,97 @@ export async function registerRoutes(
   });
 
   // ==================== Reports ====================
+  app.get(reportsApi.reports.dashboard.path, async (req, res) => {
+    try {
+      const components = await storage.getCbomComponents();
+      const files = await storage.getCbomFiles();
+      const policies = await storage.getSecurityPolicies();
+      const activePolicies = policies.filter(p => p.status === "active");
+
+      const byType: Record<string, number> = {};
+      const byQuantumLevel: Record<string, number> = {};
+      const algorithmMap: Record<string, { name: string; type: string; mode: string; quantumLevel: number | null; count: number }> = {};
+      let pqcReady = 0;
+      let pqcNotReady = 0;
+
+      for (const c of components) {
+        const t = c.componentType || "Unknown";
+        byType[t] = (byType[t] || 0) + 1;
+
+        const ql = c.nistQuantumSecurityLevel;
+        const qlLabel = ql != null ? `Level ${ql}` : "Not Assessed";
+        byQuantumLevel[qlLabel] = (byQuantumLevel[qlLabel] || 0) + 1;
+
+        if (ql != null && ql >= 3) pqcReady++;
+        else pqcNotReady++;
+
+        const algoKey = `${c.name}|${c.componentType || ""}|${c.algorithmMode || ""}`;
+        if (!algorithmMap[algoKey]) {
+          algorithmMap[algoKey] = {
+            name: c.name,
+            type: c.componentType || "Unknown",
+            mode: c.algorithmMode || "N/A",
+            quantumLevel: c.nistQuantumSecurityLevel,
+            count: 0,
+          };
+        }
+        algorithmMap[algoKey].count++;
+      }
+
+      const complianceResults: Array<{
+        componentId: number;
+        componentName: string;
+        policyId: number;
+        policyName: string;
+        compliant: boolean;
+        violations: string[];
+      }> = [];
+
+      for (const component of components) {
+        for (const policy of activePolicies) {
+          const matchResult = matchComponentToPolicy(component, policy);
+          if (matchResult.matched) {
+            complianceResults.push({
+              componentId: component.id,
+              componentName: component.name,
+              policyId: policy.id,
+              policyName: policy.name,
+              compliant: matchResult.violations.length === 0,
+              violations: matchResult.violations,
+            });
+          }
+        }
+      }
+
+      const compliantCount = complianceResults.filter(r => r.compliant).length;
+      const violationCount = complianceResults.filter(r => !r.compliant).length;
+
+      res.json({
+        cbom: {
+          totalComponents: components.length,
+          totalFiles: files.length,
+          byType: Object.entries(byType).map(([type, count]) => ({ type, count })),
+          byQuantumLevel: Object.entries(byQuantumLevel).map(([level, count]) => ({ level, count })),
+          pqcReady,
+          pqcNotReady,
+          algorithms: Object.values(algorithmMap),
+        },
+        compliance: {
+          totalMatches: complianceResults.length,
+          compliant: compliantCount,
+          violations: violationCount,
+          complianceRate: complianceResults.length > 0 ? Math.round((compliantCount / complianceResults.length) * 100) : 100,
+          activePolicies: activePolicies.length,
+          totalPolicies: policies.length,
+          results: complianceResults,
+        },
+      });
+    } catch (err) {
+      console.error("Dashboard data error:", err);
+      res.status(500).json({ message: "Failed to load dashboard data" });
+    }
+  });
+
   app.get(reportsApi.reports.list.path, async (req, res) => {
     const allReports = await storage.getReports();
     res.json(allReports);

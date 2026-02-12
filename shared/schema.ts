@@ -254,7 +254,7 @@ export const USER_TYPES = ["admin", "superuser", "user", "viewer"] as const;
 export type UserType = typeof USER_TYPES[number];
 
 // Menu items that can be controlled via RBAC
-export const MENU_ITEMS = ["dashboard", "scans", "cbom", "scripts", "settings"] as const;
+export const MENU_ITEMS = ["dashboard", "scans", "cbom", "scripts", "reports", "settings"] as const;
 export type MenuItem = typeof MENU_ITEMS[number];
 
 // Users table

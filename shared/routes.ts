@@ -480,6 +480,45 @@ export const reportsApi = {
         404: errorSchemas.notFound,
       },
     },
+    dashboard: {
+      method: 'GET' as const,
+      path: '/api/reports/dashboard',
+      responses: {
+        200: z.object({
+          cbom: z.object({
+            totalComponents: z.number(),
+            totalFiles: z.number(),
+            byType: z.array(z.object({ type: z.string(), count: z.number() })),
+            byQuantumLevel: z.array(z.object({ level: z.string(), count: z.number() })),
+            pqcReady: z.number(),
+            pqcNotReady: z.number(),
+            algorithms: z.array(z.object({
+              name: z.string(),
+              type: z.string(),
+              mode: z.string(),
+              quantumLevel: z.number().nullable(),
+              count: z.number(),
+            })),
+          }),
+          compliance: z.object({
+            totalMatches: z.number(),
+            compliant: z.number(),
+            violations: z.number(),
+            complianceRate: z.number(),
+            activePolicies: z.number(),
+            totalPolicies: z.number(),
+            results: z.array(z.object({
+              componentId: z.number(),
+              componentName: z.string(),
+              policyId: z.number(),
+              policyName: z.string(),
+              compliant: z.boolean(),
+              violations: z.array(z.string()),
+            })),
+          }),
+        }),
+      },
+    },
   },
 };
 

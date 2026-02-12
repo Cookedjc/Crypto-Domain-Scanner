@@ -28,13 +28,12 @@ A comprehensive settings page with three tabs:
 - **RBAC Controls**: Role-based access control matrix with View/Edit/Delete permissions per user type and menu item; Admin permissions are locked and cannot be modified
 
 ### Reports
-A free-form report creation system for security assessments:
-- Create, edit, save, and delete reports with title, content, and status (draft/final/archived)
-- Insert CBOM component summaries and detailed tables directly into reports
-- Insert security policy summaries
-- Run and insert live policy compliance matching results showing violations and compliant components
-- Export reports as text files and copy to clipboard
-- Reports are stored in the database for persistence
+A dynamic dashboard-style reporting system for security assessments:
+- **Dashboard View**: Live KPI cards (total components, PQC ready, compliance rate, violations), interactive charts (components by type, PQC readiness pie, quantum security levels, compliance overview), policy compliance details with violation breakdowns, and algorithm inventory table
+- **Save Snapshot**: Captures current dashboard data as a persisted report snapshot
+- **Saved Reports**: Browse, edit, and delete saved report snapshots with status tracking (draft/final/archived)
+- **Export**: Copy to clipboard or download as text file
+- **RBAC Integration**: Reports menu item added to RBAC controls; respects canView/canEdit/canDelete permissions per role
 
 ## User Preferences
 

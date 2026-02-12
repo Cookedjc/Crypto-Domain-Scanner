@@ -2,6 +2,47 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Report, CreateReportRequest, UpdateReportRequest } from "@shared/schema";
 
+export interface DashboardData {
+  cbom: {
+    totalComponents: number;
+    totalFiles: number;
+    byType: Array<{ type: string; count: number }>;
+    byQuantumLevel: Array<{ level: string; count: number }>;
+    pqcReady: number;
+    pqcNotReady: number;
+    algorithms: Array<{
+      name: string;
+      type: string;
+      mode: string;
+      quantumLevel: number | null;
+      count: number;
+    }>;
+  };
+  compliance: {
+    totalMatches: number;
+    compliant: number;
+    violations: number;
+    complianceRate: number;
+    activePolicies: number;
+    totalPolicies: number;
+    results: Array<{
+      componentId: number;
+      componentName: string;
+      policyId: number;
+      policyName: string;
+      compliant: boolean;
+      violations: string[];
+    }>;
+  };
+}
+
+export function useReportDashboard() {
+  return useQuery<DashboardData>({
+    queryKey: ["/api/reports/dashboard"],
+    refetchInterval: 30000,
+  });
+}
+
 export function useReports() {
   return useQuery<Report[]>({
     queryKey: ["/api/reports"],

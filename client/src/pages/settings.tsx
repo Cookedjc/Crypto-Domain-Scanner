@@ -786,6 +786,7 @@ function RBACTab() {
     scans: "Security Scans",
     cbom: "CBOM Manager",
     scripts: "Scripts Manager",
+    reports: "Reports",
     settings: "Settings",
   };
 
