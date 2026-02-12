@@ -28,12 +28,18 @@ A comprehensive settings page with three tabs:
 - **RBAC Controls**: Role-based access control matrix with View/Edit/Delete permissions per user type and menu item; Admin permissions are locked and cannot be modified
 
 ### Reports
-A dynamic dashboard-style reporting system for security assessments:
-- **Dashboard View**: Live KPI cards (total components, PQC ready, compliance rate, violations), interactive charts (components by type, PQC readiness pie, quantum security levels, compliance overview), policy compliance details with violation breakdowns, and algorithm inventory table
-- **Save Snapshot**: Captures current dashboard data as a persisted report snapshot
-- **Saved Reports**: Browse, edit, and delete saved report snapshots with status tracking (draft/final/archived)
-- **Export**: Copy to clipboard or download as text file
-- **RBAC Integration**: Reports menu item added to RBAC controls; respects canView/canEdit/canDelete permissions per role
+A Superset-inspired analytics dashboard for cryptographic security posture analysis:
+- **Dashboard Tabs**: Overview, Charts, Compliance, Details tabs for organized data exploration
+- **Global Filter Bar**: Collapsible filter panel with Component Type, Quantum Level, CBOM File, and Compliance Status filters; cross-filtering from chart clicks
+- **Auto-Refresh**: Configurable refresh interval (Off, 10s, 30s, 1m, 5m) with last-refreshed timestamp
+- **KPI Cards**: Total Components, PQC Ready, Compliance Rate, Violations with trend indicators and filtered vs unfiltered counts
+- **Chart Types**: Compliance Gauge (radial), PQC Readiness (donut), Security Posture Radar, Components by Type (bar), Quantum Security Levels (bar), Component Treemap, Type vs Quantum Level (stacked area), CBOM File Comparison (stacked bar), Crypto Functions Distribution (bar)
+- **Chart Features**: Fullscreen expand mode (Dialog), per-chart CSV export, cross-filtering on click
+- **Enhanced Tables**: Searchable, sortable, paginated tables for compliance details and algorithm inventory
+- **Save Snapshot**: Captures filtered dashboard data as a persisted report
+- **Saved Reports**: Browse, edit, delete snapshots with status tracking (draft/final/archived)
+- **Export**: Per-chart CSV, clipboard copy, text file download
+- **RBAC Integration**: Reports menu item with canView/canEdit/canDelete permissions per role
 
 ## User Preferences
 

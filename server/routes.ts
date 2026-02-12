@@ -941,14 +941,36 @@ export async function registerRoutes(
   // ==================== Reports ====================
   app.get(reportsApi.reports.dashboard.path, async (req, res) => {
     try {
-      const components = await storage.getCbomComponents();
+      const allComponents = await storage.getCbomComponents();
       const files = await storage.getCbomFiles();
       const policies = await storage.getSecurityPolicies();
       const activePolicies = policies.filter(p => p.status === "active");
 
+      const filterTypes = req.query.componentType ? String(req.query.componentType).split(",") : [];
+      const filterLevels = req.query.quantumLevel ? String(req.query.quantumLevel).split(",").map(Number) : [];
+      const filterFileIds = req.query.fileId ? String(req.query.fileId).split(",").map(Number) : [];
+      const filterCompliance = req.query.complianceStatus ? String(req.query.complianceStatus) : "";
+
+      let components = allComponents;
+      if (filterTypes.length > 0) {
+        components = components.filter(c => filterTypes.includes(c.componentType || "Unknown"));
+      }
+      if (filterLevels.length > 0) {
+        components = components.filter(c => {
+          if (filterLevels.includes(-1) && c.nistQuantumSecurityLevel == null) return true;
+          return c.nistQuantumSecurityLevel != null && filterLevels.includes(c.nistQuantumSecurityLevel);
+        });
+      }
+      if (filterFileIds.length > 0) {
+        components = components.filter(c => filterFileIds.includes(c.fileId));
+      }
+
       const byType: Record<string, number> = {};
       const byQuantumLevel: Record<string, number> = {};
       const algorithmMap: Record<string, { name: string; type: string; mode: string; quantumLevel: number | null; count: number }> = {};
+      const cryptoFunctionDist: Record<string, number> = {};
+      const typeByLevel: Record<string, Record<string, number>> = {};
+      const perFile: Record<number, { fileId: number; filename: string; total: number; pqcReady: number; pqcNotReady: number }> = {};
       let pqcReady = 0;
       let pqcNotReady = 0;
 
@@ -974,15 +996,34 @@ export async function registerRoutes(
           };
         }
         algorithmMap[algoKey].count++;
+
+        if (c.cryptoFunctions && Array.isArray(c.cryptoFunctions)) {
+          for (const fn of c.cryptoFunctions) {
+            cryptoFunctionDist[fn] = (cryptoFunctionDist[fn] || 0) + 1;
+          }
+        }
+
+        if (!typeByLevel[t]) typeByLevel[t] = {};
+        typeByLevel[t][qlLabel] = (typeByLevel[t][qlLabel] || 0) + 1;
+
+        const file = files.find(f => f.id === c.fileId);
+        if (!perFile[c.fileId]) {
+          perFile[c.fileId] = { fileId: c.fileId, filename: file?.filename || `File ${c.fileId}`, total: 0, pqcReady: 0, pqcNotReady: 0 };
+        }
+        perFile[c.fileId].total++;
+        if (ql != null && ql >= 3) perFile[c.fileId].pqcReady++;
+        else perFile[c.fileId].pqcNotReady++;
       }
 
       const complianceResults: Array<{
         componentId: number;
         componentName: string;
+        componentType: string;
         policyId: number;
         policyName: string;
         compliant: boolean;
         violations: string[];
+        quantumLevel: number | null;
       }> = [];
 
       for (const component of components) {
@@ -992,27 +1033,58 @@ export async function registerRoutes(
             complianceResults.push({
               componentId: component.id,
               componentName: component.name,
+              componentType: component.componentType || "Unknown",
               policyId: policy.id,
               policyName: policy.name,
               compliant: matchResult.violations.length === 0,
               violations: matchResult.violations,
+              quantumLevel: component.nistQuantumSecurityLevel,
             });
           }
         }
       }
 
+      let filteredCompliance = complianceResults;
+      if (filterCompliance === "compliant") {
+        filteredCompliance = complianceResults.filter(r => r.compliant);
+      } else if (filterCompliance === "violation") {
+        filteredCompliance = complianceResults.filter(r => !r.compliant);
+      }
+
       const compliantCount = complianceResults.filter(r => r.compliant).length;
       const violationCount = complianceResults.filter(r => !r.compliant).length;
+
+      const allTypes = Array.from(new Set(allComponents.map(c => c.componentType || "Unknown"))).sort();
+      const allLevels = Array.from(new Set(allComponents.map(c => c.nistQuantumSecurityLevel))).sort((a, b) => (a ?? -1) - (b ?? -1));
+
+      const radarDimensions = [
+        { dimension: "PQC Coverage", value: components.length > 0 ? Math.round((pqcReady / components.length) * 100) : 0 },
+        { dimension: "Policy Compliance", value: complianceResults.length > 0 ? Math.round((compliantCount / complianceResults.length) * 100) : 100 },
+        { dimension: "Algorithm Diversity", value: Math.min(Object.keys(algorithmMap).length * 20, 100) },
+        { dimension: "File Coverage", value: Math.min(files.length * 25, 100) },
+        { dimension: "Type Coverage", value: Math.min(Object.keys(byType).length * 20, 100) },
+        { dimension: "Security Depth", value: components.length > 0 ? Math.min(Math.round((components.filter(c => (c.nistQuantumSecurityLevel ?? 0) >= 1).length / components.length) * 100), 100) : 0 },
+      ];
+
+      const typeByLevelData = Object.entries(typeByLevel).map(([type, levels]) => ({
+        type,
+        ...levels,
+      }));
 
       res.json({
         cbom: {
           totalComponents: components.length,
           totalFiles: files.length,
+          unfilteredTotal: allComponents.length,
           byType: Object.entries(byType).map(([type, count]) => ({ type, count })),
           byQuantumLevel: Object.entries(byQuantumLevel).map(([level, count]) => ({ level, count })),
           pqcReady,
           pqcNotReady,
           algorithms: Object.values(algorithmMap),
+          cryptoFunctions: Object.entries(cryptoFunctionDist).map(([fn, count]) => ({ name: fn, count })).sort((a, b) => b.count - a.count),
+          typeByLevel: typeByLevelData,
+          perFile: Object.values(perFile),
+          radarDimensions,
         },
         compliance: {
           totalMatches: complianceResults.length,
@@ -1021,7 +1093,21 @@ export async function registerRoutes(
           complianceRate: complianceResults.length > 0 ? Math.round((compliantCount / complianceResults.length) * 100) : 100,
           activePolicies: activePolicies.length,
           totalPolicies: policies.length,
-          results: complianceResults,
+          results: filteredCompliance,
+        },
+        filters: {
+          availableTypes: allTypes,
+          availableLevels: allLevels,
+          availableFiles: files.map(f => ({ id: f.id, filename: f.filename })),
+        },
+        meta: {
+          generatedAt: new Date().toISOString(),
+          activeFilters: {
+            componentType: filterTypes,
+            quantumLevel: filterLevels,
+            fileId: filterFileIds,
+            complianceStatus: filterCompliance,
+          },
         },
       });
     } catch (err) {
