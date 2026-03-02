@@ -3,12 +3,14 @@ import {
   scans, insertScanSchema, scanRequestSchema, cbomFiles, cbomComponents,
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
   users, rolePermissions, authConfig, securityPolicies, reports, outputDirectories,
+  githubRepos,
   createScriptSchema, createVariableSchema, createScheduleSchema,
   createUserSchema, updateUserSchema, updateRolePermissionSchema,
   createAuthConfigSchema, updateAuthConfigSchema,
   createSecurityPolicySchema, updateSecurityPolicySchema,
   createReportSchema, updateReportSchema,
-  createOutputDirectorySchema, updateOutputDirectorySchema
+  createOutputDirectorySchema, updateOutputDirectorySchema,
+  createGithubRepoSchema, updateGithubRepoSchema
 } from './schema';
 
 export const errorSchemas = {
@@ -577,6 +579,61 @@ export const outputDirectoriesApi = {
           })),
           totalFiles: z.number(),
         }),
+      },
+    },
+  },
+};
+
+// GitHub Repos API
+export const githubReposApi = {
+  repos: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/github/repos',
+      responses: {
+        200: z.array(z.custom<typeof githubRepos.$inferSelect>()),
+      },
+    },
+    get: {
+      method: 'GET' as const,
+      path: '/api/github/repos/:id',
+      responses: {
+        200: z.custom<typeof githubRepos.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/github/repos',
+      input: createGithubRepoSchema,
+      responses: {
+        201: z.custom<typeof githubRepos.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/github/repos/:id',
+      input: updateGithubRepoSchema,
+      responses: {
+        200: z.custom<typeof githubRepos.$inferSelect>(),
+        404: errorSchemas.notFound,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/github/repos/:id',
+      responses: {
+        204: z.void(),
+        404: errorSchemas.notFound,
+      },
+    },
+    scan: {
+      method: 'POST' as const,
+      path: '/api/github/repos/:id/scan',
+      responses: {
+        200: z.custom<typeof githubRepos.$inferSelect>(),
+        404: errorSchemas.notFound,
       },
     },
   },

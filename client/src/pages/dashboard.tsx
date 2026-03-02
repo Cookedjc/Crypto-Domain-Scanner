@@ -1,4 +1,5 @@
 import { useScans, useDeleteScan } from "@/hooks/use-scans";
+import { useGithubRepos, useCreateGithubRepo, useDeleteGithubRepo, useScanGithubRepo } from "@/hooks/use-github-repos";
 import Layout from "@/components/layout";
 import { CreateScanDialog } from "@/components/create-scan-dialog";
 import { Link } from "wouter";
@@ -21,15 +22,34 @@ import {
   AlertTriangle,
   CheckCircle2,
   XCircle,
-  Package
+  Package,
+  Github,
+  Plus,
+  Eye,
+  EyeOff,
+  GitBranch,
+  Play,
+  ChevronDown,
+  ChevronUp,
+  ShieldQuestion,
+  X
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useState, useEffect } from "react";
-import type { Scan, CbomComponent, ScriptExecution, ScheduledScript } from "@shared/schema";
+import type { Scan, CbomComponent, ScriptExecution, ScheduledScript, GithubRepo } from "@shared/schema";
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 
 // Helper for status colors
@@ -301,6 +321,9 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* GitHub Repos Section */}
+      <GithubReposSection />
+
       {/* Scans List Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -366,6 +389,390 @@ function StatsCard({ title, value, icon: Icon, trend, color }: any) {
         </span>
       </div>
     </div>
+  );
+}
+
+function GithubReposSection() {
+  const { data: repos, isLoading } = useGithubRepos();
+  const deleteRepo = useDeleteGithubRepo();
+  const scanRepo = useScanGithubRepo();
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case "critical": return "text-rose-500 bg-rose-500/10 border-rose-500/20";
+      case "high": return "text-orange-500 bg-orange-500/10 border-orange-500/20";
+      case "medium": return "text-amber-500 bg-amber-500/10 border-amber-500/20";
+      default: return "text-blue-500 bg-blue-500/10 border-blue-500/20";
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const styles: Record<string, string> = {
+      pending: "bg-muted text-muted-foreground",
+      scanning: "bg-primary/10 text-primary border-primary/20 animate-pulse",
+      completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+      failed: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+    };
+    return (
+      <Badge variant="outline" className={`font-mono text-[10px] uppercase ${styles[status] || ""}`} data-testid={`badge-repo-status-${status}`}>
+        {status === "scanning" && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+        {status}
+      </Badge>
+    );
+  };
+
+  const getRepoName = (url: string) => {
+    try {
+      const parsed = new URL(url);
+      return parsed.pathname.replace(/^\//, '').replace(/\.git$/, '');
+    } catch {
+      return url;
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-display font-semibold flex items-center gap-2">
+          <Github className="w-5 h-5" />
+          GitHub Repository Scans
+        </h2>
+        <AddGithubRepoDialog />
+      </div>
+
+      <div className="bg-card rounded-xl border border-border/50 overflow-hidden shadow-sm">
+        {isLoading ? (
+          <div className="p-6 space-y-3">
+            {[1, 2].map(i => (
+              <div key={i} className="flex items-center gap-4">
+                <Skeleton className="h-10 w-10 rounded-lg" />
+                <div className="space-y-2 flex-1">
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-3 w-1/4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : !repos?.length ? (
+          <div className="text-center py-12 text-muted-foreground">
+            <Github className="w-10 h-10 mx-auto mb-3 opacity-20" />
+            <p className="text-sm font-medium">No repositories added</p>
+            <p className="text-xs mt-1">Add a GitHub repository to scan for cryptographic usage.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/50">
+            {repos.map((repo: GithubRepo) => {
+              const isExpanded = expandedId === repo.id;
+              const results = repo.scanResults as any;
+              const findings = results?.findings || [];
+              const pqcNotReady = findings.filter((f: any) => !f.pqcReady);
+              const pqcReady = findings.filter((f: any) => f.pqcReady);
+
+              return (
+                <div key={repo.id} data-testid={`repo-row-${repo.id}`}>
+                  <div className="p-4 hover:bg-muted/30 transition-colors group">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-muted/50 border border-border/50 flex items-center justify-center">
+                        <Github className="w-5 h-5 text-muted-foreground" />
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-foreground truncate font-mono text-sm" data-testid={`text-repo-name-${repo.id}`}>
+                            {getRepoName(repo.repoUrl)}
+                          </h3>
+                          {(repo as any).hasAuth && (
+                            <Badge variant="outline" className="text-[10px] font-mono">
+                              <Lock className="w-2.5 h-2.5 mr-1" />
+                              AUTH
+                            </Badge>
+                          )}
+                          {getStatusBadge(repo.status)}
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground font-mono">
+                          <span className="flex items-center gap-1">
+                            <GitBranch className="w-3 h-3" /> {repo.branch || "main"}
+                          </span>
+                          {results?.totalFiles != null && (
+                            <span className="flex items-center gap-1">
+                              <FileJson className="w-3 h-3" /> {results.totalFiles} files
+                            </span>
+                          )}
+                          {results?.cryptoFiles != null && (
+                            <span className="flex items-center gap-1">
+                              <ShieldQuestion className="w-3 h-3" /> {results.cryptoFiles} crypto files
+                            </span>
+                          )}
+                          {repo.lastScanAt && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {formatDistanceToNow(new Date(repo.lastScanAt), { addSuffix: true })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        {repo.status === "completed" && findings.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setExpandedId(isExpanded ? null : repo.id)}
+                            data-testid={`button-expand-repo-${repo.id}`}
+                          >
+                            {pqcNotReady.length > 0 ? (
+                              <Badge variant="outline" className="text-rose-500 border-rose-500/30 text-[10px] mr-2">
+                                {pqcNotReady.length} issues
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-emerald-500 border-emerald-500/30 text-[10px] mr-2">
+                                PQC Ready
+                              </Badge>
+                            )}
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => scanRepo.mutate(repo.id)}
+                          disabled={repo.status === "scanning" || scanRepo.isPending}
+                          data-testid={`button-scan-repo-${repo.id}`}
+                        >
+                          {repo.status === "scanning" ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Play className="w-4 h-4" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+                          onClick={() => {
+                            if (confirm("Remove this repository?")) deleteRepo.mutate(repo.id);
+                          }}
+                          data-testid={`button-delete-repo-${repo.id}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {repo.status === "failed" && results?.error && (
+                      <div className="mt-3 p-3 bg-rose-500/10 border border-rose-500/30 rounded-lg text-xs text-rose-400 font-mono">
+                        {results.error}
+                      </div>
+                    )}
+                  </div>
+
+                  {isExpanded && findings.length > 0 && (
+                    <div className="px-4 pb-4">
+                      <div className="bg-muted/20 rounded-lg border border-border/50 overflow-hidden">
+                        <div className="grid grid-cols-2 gap-3 p-3 border-b border-border/50">
+                          <div className="bg-background rounded-lg p-3 border border-border/50">
+                            <div className="text-xs text-muted-foreground mb-1">Total Findings</div>
+                            <div className="text-xl font-mono font-bold">{findings.length}</div>
+                          </div>
+                          <div className="bg-background rounded-lg p-3 border border-border/50">
+                            <div className="text-xs text-muted-foreground mb-1">Not PQC Ready</div>
+                            <div className="text-xl font-mono font-bold text-rose-500">{pqcNotReady.length}</div>
+                          </div>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto">
+                          <table className="w-full text-xs">
+                            <thead className="sticky top-0 bg-muted/50">
+                              <tr className="text-left text-muted-foreground">
+                                <th className="p-2 font-medium">File</th>
+                                <th className="p-2 font-medium">Line</th>
+                                <th className="p-2 font-medium">Algorithm</th>
+                                <th className="p-2 font-medium">Type</th>
+                                <th className="p-2 font-medium">Severity</th>
+                                <th className="p-2 font-medium">PQC</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border/30">
+                              {findings.map((f: any, idx: number) => (
+                                <tr key={idx} className="hover:bg-muted/30">
+                                  <td className="p-2 font-mono truncate max-w-[200px]" title={f.file}>{f.file}</td>
+                                  <td className="p-2 font-mono">{f.line || "-"}</td>
+                                  <td className="p-2 font-mono font-medium">{f.algorithm}</td>
+                                  <td className="p-2">
+                                    <Badge variant="outline" className="text-[9px]">{f.type}</Badge>
+                                  </td>
+                                  <td className="p-2">
+                                    <Badge variant="outline" className={`text-[9px] ${getSeverityColor(f.severity)}`}>
+                                      {f.severity}
+                                    </Badge>
+                                  </td>
+                                  <td className="p-2">
+                                    {f.pqcReady ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                    ) : (
+                                      <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddGithubRepoDialog() {
+  const [open, setOpen] = useState(false);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [branch, setBranch] = useState("main");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const createRepo = useCreateGithubRepo();
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createRepo.mutate(
+      {
+        repoUrl,
+        branch: branch || "main",
+        username: username || undefined,
+        password: password || undefined,
+      },
+      {
+        onSuccess: () => {
+          setOpen(false);
+          setRepoUrl("");
+          setBranch("main");
+          setUsername("");
+          setPassword("");
+        },
+      }
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" data-testid="button-add-github-repo">
+          <Plus className="w-4 h-4 mr-2" />
+          Add Repository
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[500px] border-primary/20 bg-card shadow-2xl shadow-black/50">
+        <DialogHeader>
+          <DialogTitle className="text-xl font-display flex items-center gap-2">
+            <Github className="w-5 h-5" />
+            Add GitHub Repository
+          </DialogTitle>
+          <DialogDescription>
+            Enter a GitHub repository URL to scan for cryptographic usage. Add credentials for private repos.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+          <div className="space-y-2">
+            <label className="font-mono text-xs uppercase text-muted-foreground">Repository URL</label>
+            <div className="relative">
+              <Github className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="https://github.com/owner/repo"
+                className="pl-9 font-mono"
+                value={repoUrl}
+                onChange={(e) => setRepoUrl(e.target.value)}
+                required
+                data-testid="input-repo-url"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="font-mono text-xs uppercase text-muted-foreground">Branch</label>
+            <div className="relative">
+              <GitBranch className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="main"
+                className="pl-9 font-mono"
+                value={branch}
+                onChange={(e) => setBranch(e.target.value)}
+                data-testid="input-repo-branch"
+              />
+            </div>
+          </div>
+
+          <div className="border border-border/50 rounded-lg p-4 space-y-3 bg-muted/20">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Lock className="w-4 h-4 text-muted-foreground" />
+              Private Repository Authentication
+            </div>
+            <p className="text-xs text-muted-foreground">
+              For private repos, use a GitHub username and personal access token (PAT).
+            </p>
+
+            <div className="space-y-2">
+              <label className="font-mono text-xs uppercase text-muted-foreground">Username</label>
+              <Input
+                placeholder="github-username"
+                className="font-mono"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                data-testid="input-repo-username"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="font-mono text-xs uppercase text-muted-foreground">Password / Token</label>
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="ghp_xxxxxxxxxxxx"
+                  className="font-mono pr-10"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  data-testid="input-repo-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                  data-testid="button-toggle-password"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="pt-2">
+            <Button
+              type="submit"
+              className="w-full bg-primary font-bold tracking-wide"
+              disabled={createRepo.isPending || !repoUrl}
+              data-testid="button-submit-repo"
+            >
+              {createRepo.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Repository"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }
 

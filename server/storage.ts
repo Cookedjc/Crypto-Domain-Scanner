@@ -3,6 +3,7 @@ import {
   scans, cbomFiles, cbomComponents, 
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
   users, rolePermissions, authConfig, securityPolicies, reports, outputDirectories,
+  githubRepos,
   type InsertScan, type Scan, 
   type CbomFile, type CbomComponent, type InsertCbomFile, type InsertCbomComponent,
   type ScriptVariable, type InsertScriptVariable,
@@ -15,6 +16,7 @@ import {
   type SecurityPolicy, type InsertSecurityPolicy,
   type Report, type InsertReport,
   type OutputDirectory, type InsertOutputDirectory,
+  type GithubRepo, type InsertGithubRepo,
   USER_TYPES, MENU_ITEMS
 } from "@shared/schema";
 import { eq, desc, and, inArray, lte, isNull, or } from "drizzle-orm";
@@ -110,6 +112,13 @@ export interface IStorage {
   updateOutputDirectory(id: number, data: Partial<InsertOutputDirectory>): Promise<OutputDirectory | undefined>;
   deleteOutputDirectory(id: number): Promise<void>;
   updateOutputDirectoryLastScanned(id: number): Promise<void>;
+
+  // GitHub Repos
+  createGithubRepo(repo: InsertGithubRepo): Promise<GithubRepo>;
+  getGithubRepos(): Promise<GithubRepo[]>;
+  getGithubRepo(id: number): Promise<GithubRepo | undefined>;
+  updateGithubRepo(id: number, data: Partial<InsertGithubRepo>): Promise<GithubRepo | undefined>;
+  deleteGithubRepo(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -541,6 +550,33 @@ export class DatabaseStorage implements IStorage {
     await db.update(outputDirectories)
       .set({ lastScannedAt: new Date() })
       .where(eq(outputDirectories.id, id));
+  }
+
+  // GitHub Repos
+  async createGithubRepo(repo: InsertGithubRepo): Promise<GithubRepo> {
+    const [created] = await db.insert(githubRepos).values(repo).returning();
+    return created;
+  }
+
+  async getGithubRepos(): Promise<GithubRepo[]> {
+    return await db.select().from(githubRepos).orderBy(desc(githubRepos.createdAt));
+  }
+
+  async getGithubRepo(id: number): Promise<GithubRepo | undefined> {
+    const [repo] = await db.select().from(githubRepos).where(eq(githubRepos.id, id));
+    return repo;
+  }
+
+  async updateGithubRepo(id: number, data: Partial<InsertGithubRepo>): Promise<GithubRepo | undefined> {
+    const [updated] = await db.update(githubRepos)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(githubRepos.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteGithubRepo(id: number): Promise<void> {
+    await db.delete(githubRepos).where(eq(githubRepos.id, id));
   }
 }
 

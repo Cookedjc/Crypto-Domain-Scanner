@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api, cbomApi, scriptsApi, settingsApi, policiesApi, reportsApi, outputDirectoriesApi, errorSchemas } from "@shared/routes";
+import { api, cbomApi, scriptsApi, settingsApi, policiesApi, reportsApi, outputDirectoriesApi, githubReposApi, errorSchemas } from "@shared/routes";
 import { z } from "zod";
 import tls from "tls";
 import dns from "dns/promises";
@@ -15,6 +15,7 @@ import {
   createSecurityPolicySchema, updateSecurityPolicySchema,
   createReportSchema, updateReportSchema,
   createOutputDirectorySchema, updateOutputDirectorySchema,
+  createGithubRepoSchema, updateGithubRepoSchema,
   type CbomComponent, type SecurityPolicy
 } from "@shared/schema";
 import fs from "fs/promises";
@@ -1513,10 +1514,205 @@ export async function registerRoutes(
     }
   });
 
+  // ==================== GitHub Repos ====================
+
+  const sanitizeGithubRepo = (repo: any) => {
+    const { password, ...safe } = repo;
+    return { ...safe, hasAuth: !!(repo.username && repo.password) };
+  };
+
+  app.get(githubReposApi.repos.list.path, async (_req, res) => {
+    const repos = await storage.getGithubRepos();
+    res.json(repos.map(sanitizeGithubRepo));
+  });
+
+  app.get(githubReposApi.repos.get.path, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const repo = await storage.getGithubRepo(id);
+    if (!repo) return res.status(404).json({ message: "Repository not found" });
+    res.json(sanitizeGithubRepo(repo));
+  });
+
+  app.post(githubReposApi.repos.create.path, async (req, res) => {
+    try {
+      const data = createGithubRepoSchema.parse(req.body);
+      const repo = await storage.createGithubRepo(data);
+      res.status(201).json(sanitizeGithubRepo(repo));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(400).json({ message: err.message || "Failed to create repository" });
+    }
+  });
+
+  app.patch(githubReposApi.repos.update.path, async (req, res) => {
+    const id = parseInt(req.params.id);
+    try {
+      const data = updateGithubRepoSchema.parse(req.body);
+      const updated = await storage.updateGithubRepo(id, data);
+      if (!updated) return res.status(404).json({ message: "Repository not found" });
+      res.json(sanitizeGithubRepo(updated));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(400).json({ message: err.message || "Failed to update repository" });
+    }
+  });
+
+  app.delete(githubReposApi.repos.delete.path, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const repo = await storage.getGithubRepo(id);
+    if (!repo) return res.status(404).json({ message: "Repository not found" });
+    await storage.deleteGithubRepo(id);
+    res.status(204).send();
+  });
+
+  app.post(githubReposApi.repos.scan.path, async (req, res) => {
+    const id = parseInt(req.params.id);
+    const repo = await storage.getGithubRepo(id);
+    if (!repo) return res.status(404).json({ message: "Repository not found" });
+
+    await storage.updateGithubRepo(id, { status: "scanning" } as any);
+
+    scanGithubRepo(id, repo.repoUrl, repo.branch || "main", repo.username || undefined, repo.password || undefined);
+
+    const updated = await storage.getGithubRepo(id);
+    res.json(sanitizeGithubRepo(updated));
+  });
+
   // Start scheduler
   startScheduler();
 
   return httpServer;
+}
+
+const CRYPTO_PATTERNS: Array<{ pattern: RegExp; algorithm: string; type: string; pqcReady: boolean; severity: string }> = [
+  { pattern: /\b(MD5|md5)\b/g, algorithm: "MD5", type: "hash", pqcReady: false, severity: "critical" },
+  { pattern: /\b(SHA-?1|sha1)\b/g, algorithm: "SHA-1", type: "hash", pqcReady: false, severity: "high" },
+  { pattern: /\b(SHA-?256|sha256|SHA-?384|sha384|SHA-?512|sha512)\b/g, algorithm: "SHA-2", type: "hash", pqcReady: true, severity: "info" },
+  { pattern: /\b(SHA-?3|sha3|SHAKE128|SHAKE256)\b/g, algorithm: "SHA-3", type: "hash", pqcReady: true, severity: "info" },
+  { pattern: /\b(DES|3DES|TripleDES|triple-des)\b/gi, algorithm: "DES/3DES", type: "cipher", pqcReady: false, severity: "critical" },
+  { pattern: /\b(AES-?128|AES-?256|AES-?GCM|aes)\b/gi, algorithm: "AES", type: "cipher", pqcReady: true, severity: "info" },
+  { pattern: /\b(Blowfish|blowfish|BLOWFISH)\b/g, algorithm: "Blowfish", type: "cipher", pqcReady: false, severity: "high" },
+  { pattern: /\b(RC4|rc4|arcfour)\b/gi, algorithm: "RC4", type: "cipher", pqcReady: false, severity: "critical" },
+  { pattern: /\b(ChaCha20|chacha20|CHACHA20)\b/g, algorithm: "ChaCha20", type: "cipher", pqcReady: true, severity: "info" },
+  { pattern: /\b(RSA|rsa)\b/g, algorithm: "RSA", type: "key-exchange", pqcReady: false, severity: "medium" },
+  { pattern: /\b(ECDSA|ecdsa|ECDH|ecdh)\b/g, algorithm: "ECC", type: "key-exchange", pqcReady: false, severity: "medium" },
+  { pattern: /\b(DSA|dsa)\b/g, algorithm: "DSA", type: "signature", pqcReady: false, severity: "high" },
+  { pattern: /\b(Ed25519|ed25519|Ed448|ed448)\b/g, algorithm: "EdDSA", type: "signature", pqcReady: false, severity: "medium" },
+  { pattern: /\b(Diffie-?Hellman|DH|diffie_hellman)\b/gi, algorithm: "Diffie-Hellman", type: "key-exchange", pqcReady: false, severity: "medium" },
+  { pattern: /\b(ML-KEM|MLKEM|Kyber|kyber|CRYSTALS-Kyber)\b/gi, algorithm: "ML-KEM (Kyber)", type: "kem", pqcReady: true, severity: "info" },
+  { pattern: /\b(ML-DSA|MLDSA|Dilithium|dilithium|CRYSTALS-Dilithium)\b/gi, algorithm: "ML-DSA (Dilithium)", type: "signature", pqcReady: true, severity: "info" },
+  { pattern: /\b(SPHINCS|sphincs|SLH-DSA|SLHDSA)\b/gi, algorithm: "SLH-DSA (SPHINCS+)", type: "signature", pqcReady: true, severity: "info" },
+  { pattern: /\b(FALCON|falcon|FN-DSA)\b/gi, algorithm: "FN-DSA (FALCON)", type: "signature", pqcReady: true, severity: "info" },
+  { pattern: /\b(HMAC|hmac)\b/g, algorithm: "HMAC", type: "mac", pqcReady: true, severity: "info" },
+  { pattern: /\b(PBKDF2|pbkdf2|bcrypt|scrypt|argon2)\b/gi, algorithm: "KDF", type: "kdf", pqcReady: true, severity: "info" },
+  { pattern: /\b(TLS\s*1\.[0-1]|SSLv[23])\b/gi, algorithm: "Legacy TLS/SSL", type: "protocol", pqcReady: false, severity: "critical" },
+  { pattern: /\b(TLS\s*1\.[23])\b/gi, algorithm: "Modern TLS", type: "protocol", pqcReady: false, severity: "info" },
+];
+
+async function scanGithubRepo(repoId: number, repoUrl: string, branch: string, username?: string, password?: string) {
+  try {
+    const parsedUrl = new URL(repoUrl);
+    const [owner, repo] = parsedUrl.pathname.replace(/^\//, '').replace(/\.git$/, '').split('/');
+
+    if (!owner || !repo) {
+      await storage.updateGithubRepo(repoId, {
+        status: "failed",
+        lastScanAt: new Date(),
+        scanResults: { error: "Invalid repository URL. Expected format: https://github.com/owner/repo" },
+      } as any);
+      return;
+    }
+
+    const headers: Record<string, string> = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'CipherGuard-Scanner',
+    };
+
+    if (username && password) {
+      headers['Authorization'] = 'Basic ' + Buffer.from(`${username}:${password}`).toString('base64');
+    }
+
+    const apiBase = `https://api.github.com/repos/${owner}/${repo}`;
+
+    const treeRes = await fetch(`${apiBase}/git/trees/${branch}?recursive=1`, { headers });
+
+    if (!treeRes.ok) {
+      const errText = await treeRes.text();
+      await storage.updateGithubRepo(repoId, {
+        status: "failed",
+        lastScanAt: new Date(),
+        scanResults: { error: `GitHub API error (${treeRes.status}): ${errText}` },
+      } as any);
+      return;
+    }
+
+    const treeData = await treeRes.json() as any;
+    const allFiles = (treeData.tree || []).filter((f: any) => f.type === 'blob');
+
+    const codeExtensions = ['.js', '.ts', '.jsx', '.tsx', '.py', '.java', '.go', '.rs', '.c', '.cpp', '.h', '.hpp', '.cs', '.rb', '.php', '.swift', '.kt', '.scala', '.yml', '.yaml', '.json', '.toml', '.xml', '.conf', '.cfg', '.ini', '.env', '.sh', '.bash', '.ps1', '.tf', '.hcl'];
+    const codeFiles = allFiles.filter((f: any) => {
+      const ext = path.extname(f.path).toLowerCase();
+      return codeExtensions.includes(ext);
+    });
+
+    const findings: Array<{ file: string; line?: number; algorithm: string; type: string; severity: string; pqcReady: boolean }> = [];
+    const filesToScan = codeFiles.slice(0, 100);
+
+    for (const file of filesToScan) {
+      try {
+        const contentRes = await fetch(`${apiBase}/contents/${file.path}?ref=${branch}`, { headers });
+        if (!contentRes.ok) continue;
+
+        const contentData = await contentRes.json() as any;
+        if (contentData.encoding !== 'base64' || !contentData.content) continue;
+
+        const content = Buffer.from(contentData.content, 'base64').toString('utf-8');
+        const lines = content.split('\n');
+
+        for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+          const line = lines[lineNum];
+          for (const cp of CRYPTO_PATTERNS) {
+            cp.pattern.lastIndex = 0;
+            if (cp.pattern.test(line)) {
+              const alreadyFound = findings.some(f => f.file === file.path && f.algorithm === cp.algorithm);
+              if (!alreadyFound) {
+                findings.push({
+                  file: file.path,
+                  line: lineNum + 1,
+                  algorithm: cp.algorithm,
+                  type: cp.type,
+                  severity: cp.severity,
+                  pqcReady: cp.pqcReady,
+                });
+              }
+            }
+          }
+        }
+      } catch {
+        // skip file on error
+      }
+    }
+
+    await storage.updateGithubRepo(repoId, {
+      status: "completed",
+      lastScanAt: new Date(),
+      scanResults: {
+        totalFiles: allFiles.length,
+        cryptoFiles: new Set(findings.map(f => f.file)).size,
+        findings,
+      },
+    } as any);
+  } catch (err: any) {
+    await storage.updateGithubRepo(repoId, {
+      status: "failed",
+      lastScanAt: new Date(),
+      scanResults: { error: err.message || "Unknown error during scan" },
+    } as any);
+  }
 }
 
 function matchComponentToPolicy(

@@ -539,3 +539,57 @@ export const updateReportSchema = createReportSchema.partial();
 
 export type CreateReportRequest = z.infer<typeof createReportSchema>;
 export type UpdateReportRequest = z.infer<typeof updateReportSchema>;
+
+// ==================== GitHub Repos ====================
+
+export const GITHUB_REPO_STATUSES = ["pending", "scanning", "completed", "failed"] as const;
+export type GithubRepoStatus = typeof GITHUB_REPO_STATUSES[number];
+
+export const githubRepos = pgTable("github_repos", {
+  id: serial("id").primaryKey(),
+  repoUrl: text("repo_url").notNull(),
+  branch: text("branch").default("main"),
+  username: text("username"),
+  password: text("password"),
+  status: text("status").notNull().default("pending"),
+  lastScanAt: timestamp("last_scan_at"),
+  scanResults: jsonb("scan_results").$type<{
+    totalFiles?: number;
+    cryptoFiles?: number;
+    findings?: Array<{
+      file: string;
+      line?: number;
+      algorithm: string;
+      type: string;
+      severity: string;
+      pqcReady: boolean;
+    }>;
+    error?: string;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGithubRepoSchema = createInsertSchema(githubRepos).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastScanAt: true,
+  scanResults: true,
+  status: true,
+});
+
+export type GithubRepo = typeof githubRepos.$inferSelect;
+export type InsertGithubRepo = typeof githubRepos.$inferInsert;
+
+export const createGithubRepoSchema = z.object({
+  repoUrl: z.string().min(1, "Repository URL is required").url("Must be a valid URL"),
+  branch: z.string().default("main"),
+  username: z.string().optional(),
+  password: z.string().optional(),
+});
+
+export const updateGithubRepoSchema = createGithubRepoSchema.partial();
+
+export type CreateGithubRepoRequest = z.infer<typeof createGithubRepoSchema>;
+export type UpdateGithubRepoRequest = z.infer<typeof updateGithubRepoSchema>;

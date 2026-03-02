@@ -6,6 +6,15 @@ CipherGuard is a Post-Quantum Cryptography (PQC) security analysis platform that
 
 The platform enables users to scan domains across multiple ports, optionally enumerate common subdomains, and view detailed reports on cryptographic posture including protocol versions, cipher strength, and quantum-resistance status.
 
+### GitHub Repository Scanning
+The Active Scans section includes GitHub repository scanning for cryptographic usage analysis:
+- Add GitHub repositories by URL with optional username/password (PAT) authentication for private repos
+- Specify target branch for scanning
+- Scans repository files via GitHub API for cryptographic patterns (algorithms, ciphers, key exchanges, protocols)
+- Detects 20+ cryptographic patterns including legacy (MD5, SHA-1, DES, RC4) and PQC algorithms (ML-KEM, ML-DSA, SLH-DSA, FALCON)
+- Results show findings by file with algorithm, type, severity, and PQC readiness status
+- Expandable results table with severity color coding and PQC ready indicators
+
 ### CBOM Manager
 The platform includes a Cryptographic Bill of Materials (CBOM) Manager that allows teams to upload and analyze CycloneDX JSON format files. Features include:
 - Drag-and-drop file upload
@@ -102,6 +111,7 @@ Preferred communication style: Simple, everyday language.
 - `security_policies`: Cryptographic control policies (IS-22/ISO 27001 Annex A 8.24)
 - `reports`: Free-form security assessment reports with CBOM/policy data insertion
 - `output_directories`: Monitored filesystem paths for CBOM file discovery
+- `github_repos`: GitHub repository configurations with credentials and scan results
 
 ### API Contract Pattern
 The `shared/routes.ts` file defines typed API contracts using Zod schemas, ensuring type safety between frontend and backend. This includes request/response schemas and URL builders.
