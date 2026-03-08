@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
 import { api, cbomApi, scriptsApi, settingsApi, policiesApi, reportsApi, outputDirectoriesApi, githubReposApi, errorSchemas } from "@shared/routes";
@@ -16,8 +16,10 @@ import {
   createReportSchema, updateReportSchema,
   createOutputDirectorySchema, updateOutputDirectorySchema,
   createGithubRepoSchema, updateGithubRepoSchema,
+  loginSchema,
   type CbomComponent, type SecurityPolicy
 } from "@shared/schema";
+import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
 
@@ -208,11 +210,119 @@ function calculateScore(details: any): { score: number, grade: string, pqcStatus
   return { score, grade, pqcStatus, explanation };
 }
 
+function hashPassword(password: string): string {
+  return crypto.createHash("sha256").update(password).digest("hex");
+}
+
+function sanitizeUser(user: any) {
+  const { password, ...safe } = user;
+  return safe;
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!(req.session as any)?.userId) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  next();
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-  
+
+  app.use("/api", (req, res, next) => {
+    const publicPaths = ["/api/auth/login", "/api/auth/logout", "/api/auth/me"];
+    if (publicPaths.includes(req.path)) {
+      return next();
+    }
+    requireAuth(req, res, next);
+  });
+
+  // ==================== Authentication ====================
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, password } = loginSchema.parse(req.body);
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      if (!user.isActive) {
+        return res.status(401).json({ message: "Account is disabled" });
+      }
+      const hashed = hashPassword(password);
+      if (user.password && user.password !== hashed) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      if (!user.password) {
+        await storage.updateUser(user.id, { password: hashed } as any);
+      }
+      req.session.userId = user.id;
+      await storage.updateUser(user.id, { lastLogin: new Date() } as any);
+      res.json(sanitizeUser(user));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(400).json({ message: err.message || "Login failed" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ message: "Failed to logout" });
+      }
+      res.json({ message: "Logged out" });
+    });
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    const user = await storage.getUser(req.session.userId);
+    if (!user || !user.isActive) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    res.json(sanitizeUser(user));
+  });
+
+  app.post("/api/auth/switch", async (req, res) => {
+    try {
+      const { email, password } = loginSchema.parse(req.body);
+      const user = await storage.getUserByEmail(email);
+      if (!user) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      if (!user.isActive) {
+        return res.status(401).json({ message: "Account is disabled" });
+      }
+      const hashed = hashPassword(password);
+      if (user.password && user.password !== hashed) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      if (!user.password) {
+        await storage.updateUser(user.id, { password: hashed } as any);
+      }
+      req.session.userId = user.id;
+      await storage.updateUser(user.id, { lastLogin: new Date() } as any);
+      res.json(sanitizeUser(user));
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: err.errors[0].message });
+      }
+      res.status(400).json({ message: err.message || "Switch failed" });
+    }
+  });
+
+  app.get("/api/auth/users", async (_req, res) => {
+    const allUsers = await storage.getUsers();
+    res.json(allUsers.filter(u => u.isActive).map(sanitizeUser));
+  });
+
   app.get(api.scans.list.path, async (req, res) => {
     const scans = await storage.getScans();
     res.json(scans);
@@ -717,8 +827,8 @@ export async function registerRoutes(
   
   // User Management Routes
   app.get(settingsApi.users.list.path, async (req, res) => {
-    const users = await storage.getUsers();
-    res.json(users);
+    const allUsers = await storage.getUsers();
+    res.json(allUsers.map(sanitizeUser));
   });
 
   app.get(settingsApi.users.get.path, async (req, res) => {
@@ -741,8 +851,12 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Email already exists" });
     }
     
-    const user = await storage.createUser(parsed.data);
-    res.status(201).json(user);
+    const userData = { ...parsed.data };
+    if (userData.password) {
+      userData.password = hashPassword(userData.password);
+    }
+    const user = await storage.createUser(userData);
+    res.status(201).json(sanitizeUser(user));
   });
 
   app.patch(settingsApi.users.update.path, async (req, res) => {
@@ -764,8 +878,12 @@ export async function registerRoutes(
       }
     }
     
-    const user = await storage.updateUser(id, parsed.data);
-    res.json(user);
+    const updateData = { ...parsed.data };
+    if (updateData.password) {
+      updateData.password = hashPassword(updateData.password);
+    }
+    const user = await storage.updateUser(id, updateData);
+    res.json(sanitizeUser(user));
   });
 
   app.delete(settingsApi.users.delete.path, async (req, res) => {

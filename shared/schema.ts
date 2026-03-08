@@ -262,6 +262,7 @@ export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
   displayName: text("display_name").notNull(),
+  password: text("password"),
   userType: text("user_type").notNull().default("user"), // admin, superuser, user, viewer
   isActive: boolean("is_active").default(true),
   lastLogin: timestamp("last_login"),
@@ -331,6 +332,7 @@ export type InsertAuthConfig = z.infer<typeof insertAuthConfigSchema>;
 export const createUserSchema = z.object({
   email: z.string().email("Valid email is required"),
   displayName: z.string().min(1, "Display name is required"),
+  password: z.string().min(1, "Password is required").optional(),
   userType: z.enum(USER_TYPES).default("user"),
   isActive: z.boolean().default(true),
 });
@@ -338,8 +340,14 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z.object({
   email: z.string().email("Valid email is required").optional(),
   displayName: z.string().min(1, "Display name is required").optional(),
+  password: z.string().optional(),
   userType: z.enum(USER_TYPES).optional(),
   isActive: z.boolean().optional(),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email("Valid email is required"),
+  password: z.string().min(1, "Password is required"),
 });
 
 export const updateRolePermissionSchema = z.object({

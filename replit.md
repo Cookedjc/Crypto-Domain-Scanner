@@ -30,6 +30,15 @@ A comprehensive script scheduling system for automating REST API calls and CLI c
 - **Schedules**: Configure scripts to run on a 24-hour clock, specific days of week, or specific dates
 - **Execution History**: View logs and results from script executions
 
+### Authentication
+Session-based authentication system with the following features:
+- **Login Page**: Email + password login with CipherGuard branding, password visibility toggle, first-login auto-password-set
+- **Session Management**: express-session with PostgreSQL session store (connect-pg-simple), SHA-256 password hashing
+- **Auth Middleware**: All `/api/*` routes protected by session check (except `/api/auth/login`, `/api/auth/logout`, `/api/auth/me`)
+- **Profile Switching**: Sidebar user profile dropdown with quick-switch to other users (requires password), sign out
+- **Auth Context**: React context (`useAuth`) providing current user state, login/logout/switchUser functions
+- **Auth Hooks**: `useCurrentUser`, `useLogin`, `useLogout`, `useSwitchUser`, `useAvailableUsers` in `client/src/hooks/use-auth.ts`
+
 ### Settings
 A comprehensive settings page with three tabs:
 - **User Management**: Create, edit, and delete users with email, display name, and user type (admin, superuser, user, viewer)
