@@ -232,7 +232,7 @@ export async function registerRoutes(
 ): Promise<Server> {
 
   app.use("/api", (req, res, next) => {
-    const publicPaths = ["/api/auth/login", "/api/auth/logout", "/api/auth/me"];
+    const publicPaths = ["/auth/login", "/auth/logout", "/auth/me", "/auth/admin-emails"];
     if (publicPaths.includes(req.path)) {
       return next();
     }
@@ -240,6 +240,14 @@ export async function registerRoutes(
   });
 
   // ==================== Authentication ====================
+
+  app.get("/api/auth/admin-emails", async (_req, res) => {
+    const allUsers = await storage.getUsers();
+    const adminEmails = allUsers
+      .filter(u => u.userType === "admin" && u.isActive)
+      .map(u => u.email.toLowerCase());
+    res.json(adminEmails);
+  });
 
   app.post("/api/auth/login", async (req, res) => {
     try {
@@ -251,12 +259,18 @@ export async function registerRoutes(
       if (!user.isActive) {
         return res.status(401).json({ message: "Account is disabled" });
       }
-      const hashed = hashPassword(password);
-      if (user.password && user.password !== hashed) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-      if (!user.password) {
-        await storage.updateUser(user.id, { password: hashed } as any);
+      const isAdmin = user.userType === "admin";
+      if (!isAdmin) {
+        if (!password) {
+          return res.status(401).json({ message: "Password is required" });
+        }
+        const hashed = hashPassword(password);
+        if (user.password && user.password !== hashed) {
+          return res.status(401).json({ message: "Invalid email or password" });
+        }
+        if (!user.password) {
+          await storage.updateUser(user.id, { password: hashed } as any);
+        }
       }
       req.session.userId = user.id;
       await storage.updateUser(user.id, { lastLogin: new Date() } as any);
@@ -300,12 +314,18 @@ export async function registerRoutes(
       if (!user.isActive) {
         return res.status(401).json({ message: "Account is disabled" });
       }
-      const hashed = hashPassword(password);
-      if (user.password && user.password !== hashed) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-      if (!user.password) {
-        await storage.updateUser(user.id, { password: hashed } as any);
+      const isAdmin = user.userType === "admin";
+      if (!isAdmin) {
+        if (!password) {
+          return res.status(401).json({ message: "Password is required" });
+        }
+        const hashed = hashPassword(password);
+        if (user.password && user.password !== hashed) {
+          return res.status(401).json({ message: "Invalid email or password" });
+        }
+        if (!user.password) {
+          await storage.updateUser(user.id, { password: hashed } as any);
+        }
       }
       req.session.userId = user.id;
       await storage.updateUser(user.id, { lastLogin: new Date() } as any);

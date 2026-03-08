@@ -50,10 +50,13 @@ function UserProfileButton() {
     .toUpperCase()
     .slice(0, 2);
 
+  const switchTargetUser = availableUsers?.find(u => u.email.toLowerCase() === switchEmail.toLowerCase().trim());
+  const isSwitchTargetAdmin = switchTargetUser?.userType === "admin";
+
   const handleSwitchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     switchUser.mutate(
-      { email: switchEmail, password: switchPassword },
+      { email: switchEmail, password: isSwitchTargetAdmin ? "" : switchPassword },
       {
         onSuccess: () => {
           setSwitchDialogOpen(false);
@@ -65,10 +68,22 @@ function UserProfileButton() {
   };
 
   const handleQuickSwitch = (targetUser: any) => {
-    setSwitchEmail(targetUser.email);
-    setSwitchPassword("");
-    setShowSwitchPassword(false);
-    setSwitchDialogOpen(true);
+    if (targetUser.userType === "admin") {
+      switchUser.mutate(
+        { email: targetUser.email, password: "" },
+        {
+          onSuccess: () => {
+            setSwitchEmail("");
+            setSwitchPassword("");
+          },
+        }
+      );
+    } else {
+      setSwitchEmail(targetUser.email);
+      setSwitchPassword("");
+      setShowSwitchPassword(false);
+      setSwitchDialogOpen(true);
+    }
   };
 
   return (
@@ -182,28 +197,37 @@ function UserProfileButton() {
                 />
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="font-mono text-xs uppercase text-muted-foreground">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type={showSwitchPassword ? "text" : "password"}
-                  placeholder="Enter password"
-                  className="pl-9 pr-10 font-mono"
-                  value={switchPassword}
-                  onChange={(e) => setSwitchPassword(e.target.value)}
-                  required
-                  data-testid="input-switch-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowSwitchPassword(!showSwitchPassword)}
-                  className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
-                >
-                  {showSwitchPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+            {isSwitchTargetAdmin && switchEmail && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm text-emerald-400 flex items-center gap-2">
+                <Shield className="w-4 h-4 flex-shrink-0" />
+                Admin account — no password required.
               </div>
-            </div>
+            )}
+
+            {!isSwitchTargetAdmin ? (
+              <div className="space-y-2">
+                <label className="font-mono text-xs uppercase text-muted-foreground">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type={showSwitchPassword ? "text" : "password"}
+                    placeholder="Enter password"
+                    className="pl-9 pr-10 font-mono"
+                    value={switchPassword}
+                    onChange={(e) => setSwitchPassword(e.target.value)}
+                    required
+                    data-testid="input-switch-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSwitchPassword(!showSwitchPassword)}
+                    className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                  >
+                    {showSwitchPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            ) : null}
 
             {switchUser.isError && (
               <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-sm text-rose-400">
@@ -215,7 +239,7 @@ function UserProfileButton() {
               <Button
                 type="submit"
                 className="w-full bg-primary font-bold tracking-wide"
-                disabled={switchUser.isPending || !switchEmail || !switchPassword}
+                disabled={switchUser.isPending || !switchEmail || (!isSwitchTargetAdmin && !switchPassword)}
                 data-testid="button-switch-submit"
               >
                 {switchUser.isPending ? (

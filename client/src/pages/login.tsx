@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Shield, Loader2, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useLogin } from "@/hooks/use-auth";
+import { useQuery } from "@tanstack/react-query";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -10,9 +11,25 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const login = useLogin();
 
+  const { data: adminEmails } = useQuery<string[]>({
+    queryKey: ["/api/auth/admin-emails"],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/admin-emails");
+      if (!res.ok) return [];
+      return res.json();
+    },
+    retry: false,
+    staleTime: 1000 * 60 * 10,
+  });
+
+  const isAdminEmail = useMemo(() => {
+    if (!adminEmails || !email) return false;
+    return adminEmails.includes(email.toLowerCase().trim());
+  }, [adminEmails, email]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    login.mutate({ email, password });
+    login.mutate({ email, password: isAdminEmail ? "" : password });
   };
 
   return (
@@ -56,29 +73,38 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="font-mono text-xs uppercase text-muted-foreground">Password</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  className="pl-9 pr-10 font-mono"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  data-testid="input-login-password"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
-                  data-testid="button-toggle-login-password"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
+            {isAdminEmail && (
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-lg p-3 text-sm text-emerald-400 flex items-center gap-2">
+                <Shield className="w-4 h-4 flex-shrink-0" />
+                Admin account — no password required.
               </div>
-            </div>
+            )}
+
+            {!isAdminEmail && (
+              <div className="space-y-2">
+                <label className="font-mono text-xs uppercase text-muted-foreground">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Enter your password"
+                    className="pl-9 pr-10 font-mono"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    data-testid="input-login-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                    data-testid="button-toggle-login-password"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+            )}
 
             {login.isError && (
               <div className="bg-rose-500/10 border border-rose-500/30 rounded-lg p-3 text-sm text-rose-400">
@@ -89,7 +115,7 @@ export default function LoginPage() {
             <Button
               type="submit"
               className="w-full bg-primary font-bold tracking-wide"
-              disabled={login.isPending || !email || !password}
+              disabled={login.isPending || !email || (!isAdminEmail && !password)}
               data-testid="button-login-submit"
             >
               {login.isPending ? (
@@ -105,7 +131,9 @@ export default function LoginPage() {
 
           <div className="mt-6 pt-4 border-t border-border/50">
             <p className="text-xs text-muted-foreground text-center">
-              First login sets your password. Contact an admin to create your account.
+              {isAdminEmail
+                ? "Admin users can sign in without a password."
+                : "First login sets your password. Contact an admin to create your account."}
             </p>
           </div>
         </div>
