@@ -761,10 +761,85 @@ export async function registerRoutes(
       triggeredBy: "manual",
     });
 
-    // Execute script in background with output path
-    executeScript(script.command, execution.id, script.outputPath);
+    if ((script as any).scriptType === "rfc5424") {
+      // Execute RFC 5424 ingestion in background
+      ingestRfc5424File(script.command, script.name)
+        .then(async (result) => {
+          await storage.updateExecution(execution.id, {
+            status: "success",
+            output: result.summary,
+            exitCode: 0,
+            completedAt: new Date(),
+          });
+        })
+        .catch(async (err) => {
+          await storage.updateExecution(execution.id, {
+            status: "failed",
+            errorOutput: err.message,
+            exitCode: 1,
+            completedAt: new Date(),
+          });
+        });
+    } else {
+      // Execute bash script in background
+      executeScript(script.command, execution.id, script.outputPath);
+    }
 
     res.json(execution);
+  });
+
+  // Ingest RFC 5424 syslog file (preview/synchronous)
+  app.post("/api/scripts/:id/ingest", async (req, res) => {
+    const id = Number(req.params.id);
+    const script = await storage.getScript(id);
+    if (!script) return res.status(404).json({ message: "Script not found" });
+    if ((script as any).scriptType !== "rfc5424") {
+      return res.status(400).json({ message: "Script is not of type rfc5424" });
+    }
+    try {
+      const result = await ingestRfc5424File(script.command, script.name);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Ingestion failed" });
+    }
+  });
+
+  // Parse RFC 5424 content (no DB save - preview only)
+  app.post("/api/scripts/preview-rfc5424", async (req, res) => {
+    const { filePath } = req.body;
+    if (!filePath) return res.status(400).json({ message: "filePath is required" });
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      const lines = content.split("\n").filter(l => l.trim());
+      const records = [];
+      for (const line of lines) {
+        const parsed = parseRfc5424Line(line.trim());
+        if (parsed && parsed.structuredData["cbom@32473"]) {
+          const cbom = parsed.structuredData["cbom@32473"];
+          const gw = parsed.structuredData["gateway@32473"] || {};
+          records.push({
+            msgId: parsed.msgId,
+            timestamp: parsed.timestamp,
+            assetName: cbom.asset_name,
+            cipherSuite: cbom.crypto_cipher_suite,
+            protocol: cbom.crypto_protocol,
+            protocolVersion: cbom.crypto_protocol_version,
+            keyExchange: cbom.crypto_key_exchange,
+            zone: gw.zone,
+            message: parsed.message,
+            risk: assessCryptoRisk(
+              cbom.crypto_cipher_suite || "",
+              cbom.crypto_protocol_version || "",
+              cbom.crypto_key_exchange || "",
+              cbom.crypto_certificate_signature_algorithm || ""
+            ),
+          });
+        }
+      }
+      res.json({ totalLines: lines.length, cbomRecords: records.length, preview: records });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to read file" });
+    }
   });
 
   // === Script Schedules Routes (continued) ===
@@ -1927,6 +2002,231 @@ function matchComponentToPolicy(
   }
 
   return { matched: true, violations };
+}
+
+// ==================== RFC 5424 Parser ====================
+
+interface Rfc5424Record {
+  priority: number;
+  version: number;
+  timestamp: string;
+  hostname: string;
+  appName: string;
+  procId: string;
+  msgId: string;
+  structuredData: Record<string, Record<string, string>>;
+  message: string;
+}
+
+function parseRfc5424Line(line: string): Rfc5424Record | null {
+  const match = line.match(/^<(\d+)>(\d+) (\S+) (\S+) (\S+) (\S+) (\S+) ((?:\[.*?\])*|-) (.*)$/s);
+  if (!match) return null;
+
+  const [, pri, ver, ts, host, app, pid, msgid, sdRaw, msg] = match;
+  const structuredData: Record<string, Record<string, string>> = {};
+
+  // Parse all [SDID key="val" ...] blocks
+  const sdBlockRegex = /\[([^\s\]]+)((?:\s+[^\s=]+="[^"]*")*)\]/g;
+  let sdMatch: RegExpExecArray | null;
+  while ((sdMatch = sdBlockRegex.exec(sdRaw)) !== null) {
+    const sdId = sdMatch[1];
+    const params: Record<string, string> = {};
+    const paramRegex = /([^\s=]+)="([^"]*)"/g;
+    let paramMatch: RegExpExecArray | null;
+    while ((paramMatch = paramRegex.exec(sdMatch[2])) !== null) {
+      params[paramMatch[1]] = paramMatch[2];
+    }
+    structuredData[sdId] = params;
+  }
+
+  return {
+    priority: Number(pri),
+    version: Number(ver),
+    timestamp: ts,
+    hostname: host,
+    appName: app,
+    procId: pid,
+    msgId: msgid,
+    structuredData,
+    message: msg,
+  };
+}
+
+function assessCryptoRisk(cipher: string, protocol: string, keyExchange: string, sigAlg: string): string {
+  const weak = ["3DES", "RC4", "DES", "SHA1", "MD5", "sha1With", "TLS_RSA_WITH_3DES"];
+  const legacy = ["TLS_RSA_WITH_AES", "TLS 1.0", "TLS_RSA"];
+  if (weak.some(w => cipher.includes(w) || sigAlg.includes(w) || protocol.includes(w) || cipher.toUpperCase().includes(w.toUpperCase()))) return "high";
+  if (legacy.some(l => cipher.includes(l) || keyExchange === "RSA") || protocol === "1.0" || protocol === "1.1") return "high";
+  if (protocol === "1.2" || keyExchange === "ECDHE" || keyExchange === "RSA") return "medium";
+  return "low";
+}
+
+async function ingestRfc5424File(filePath: string, scriptName: string): Promise<{
+  cbomFileId: number;
+  recordsProcessed: number;
+  servicesFound: number;
+  cbomJson: any;
+  summary: string;
+}> {
+  const content = await fs.readFile(filePath, "utf-8");
+  const lines = content.split("\n").filter(l => l.trim());
+
+  const records: Rfc5424Record[] = [];
+  for (const line of lines) {
+    const parsed = parseRfc5424Line(line.trim());
+    if (parsed) records.push(parsed);
+  }
+
+  // Filter lines with cbom@32473 structured data
+  const cbomRecords = records.filter(r => r.structuredData["cbom@32473"]);
+
+  // Determine tenant from first gateway record
+  const firstGw = records.find(r => r.structuredData["gateway@32473"]);
+  const tenant = firstGw?.structuredData["gateway@32473"]?.tenant || "unknown";
+
+  // Build CycloneDX 1.7 services array
+  const services: any[] = [];
+  for (const rec of cbomRecords) {
+    const cbom = rec.structuredData["cbom@32473"];
+    const gw = rec.structuredData["gateway@32473"] || {};
+
+    const assetName = cbom.asset_name || rec.appName;
+    const protocol = cbom.crypto_protocol || "unknown";
+    const protocolVersion = cbom.crypto_protocol_version || "";
+    const cipherSuite = cbom.crypto_cipher_suite || "";
+    const keyExchange = cbom.crypto_key_exchange || "";
+    const authentication = cbom.crypto_authentication || "";
+    const sigAlg = cbom.crypto_certificate_signature_algorithm || "";
+    const bomRef = cbom.asset_bom_ref || `urn:cbom:service:${assetName}`;
+    const risk = assessCryptoRisk(cipherSuite, protocolVersion, keyExchange, sigAlg);
+
+    const properties: any[] = [
+      { name: "cbom:asset:type", value: cbom.cyclonedx_component_type || "service" },
+      { name: "cbom:crypto:protocol", value: protocol },
+      { name: "cbom:crypto:protocolVersion", value: protocolVersion },
+      { name: "cbom:crypto:cipherSuite", value: cipherSuite },
+      { name: "cbom:crypto:keyExchange", value: keyExchange },
+      { name: "cbom:crypto:authentication", value: authentication },
+      { name: "cbom:crypto:certificate:signatureAlgorithm", value: sigAlg },
+      { name: "cbom:crypto:materialState", value: "active" },
+      { name: "cbom:crypto:observationSource", value: "gateway-telemetry" },
+      { name: "cbom:telemetry:gatewayApp", value: rec.appName },
+      { name: "cbom:telemetry:gatewayPid", value: rec.procId },
+      { name: "cbom:telemetry:gatewayMsgId", value: rec.msgId },
+      { name: "cbom:telemetry:zone", value: gw.zone || "" },
+      { name: "cbom:telemetry:srcIp", value: gw.src_ip || "" },
+      { name: "cbom:telemetry:dstIp", value: gw.dst_ip || "" },
+      { name: "cbom:telemetry:dstPort", value: gw.dst_port || "" },
+      { name: "cbom:telemetry:eventMessage", value: rec.message },
+      { name: "cbom:risk:rating", value: risk },
+      { name: "cbom:parser:sourceFormat", value: "RFC5424" },
+      { name: "cbom:parser:sdid", value: "cbom@32473" },
+    ];
+
+    const dstIp = gw.dst_ip || "";
+    const dstPort = gw.dst_port || "443";
+    services.push({
+      "bom-ref": bomRef,
+      group: tenant,
+      name: assetName,
+      version: `observed-${rec.timestamp.split("T")[0]}`,
+      provider: { name: tenant },
+      endpoints: dstIp ? [`${dstIp}:${dstPort}`] : [],
+      authenticated: true,
+      "x-trust-boundary": true,
+      properties,
+    });
+  }
+
+  const serialNumber = `urn:uuid:${crypto.randomUUID()}`;
+  const nowIso = new Date().toISOString();
+  const cbomJson: any = {
+    $schema: "http://cyclonedx.org/schema/bom-1.7.schema.json",
+    bomFormat: "CycloneDX",
+    specVersion: "1.7",
+    serialNumber,
+    version: 1,
+    metadata: {
+      timestamp: nowIso,
+      lifecycles: [{ phase: "operations" }],
+      tools: {
+        components: [{
+          type: "application",
+          name: "CipherGuard RFC5424 Ingestion",
+          version: "1.0.0",
+        }],
+      },
+      component: {
+        type: "platform",
+        name: scriptName,
+        version: new Date().toISOString().split("T")[0],
+        description: `CycloneDX 1.7 CBOM derived from RFC 5424 syslog ingestion. Source: ${filePath}`,
+      },
+      properties: [
+        { name: "cbom:profile", value: "log-ingestion" },
+        { name: "cbom:source:type", value: "syslog" },
+        { name: "cbom:source:format", value: "RFC5424" },
+        { name: "cbom:source:file", value: filePath },
+        { name: "cbom:tenant", value: tenant },
+      ],
+    },
+    services,
+  };
+
+  // Save to CBOM Manager
+  const filename = `rfc5424-${scriptName.replace(/\s+/g, "-").toLowerCase()}-${Date.now()}.json`;
+  const cbomFile = await storage.createCbomFile({
+    filename,
+    componentCount: services.length,
+    metadata: {
+      bomFormat: "CycloneDX",
+      specVersion: "1.7",
+      serialNumber,
+      version: 1,
+    },
+  });
+
+  // Save each service as a CBOM component
+  for (const svc of services) {
+    const cbom = cbomRecords.find(r => (r.structuredData["cbom@32473"]?.asset_bom_ref || `urn:cbom:service:${r.structuredData["cbom@32473"]?.asset_name}`) === svc["bom-ref"]);
+    const cbomData = cbom?.structuredData["cbom@32473"] || {};
+    const risk = svc.properties.find((p: any) => p.name === "cbom:risk:rating")?.value || "low";
+
+    // Map risk to nistQuantumSecurityLevel proxy (for display purposes)
+    const riskToLevel: Record<string, number> = { low: 3, medium: 2, high: 1 };
+
+    await storage.createCbomComponent({
+      fileId: cbomFile.id,
+      bomRef: svc["bom-ref"],
+      componentType: "service",
+      name: svc.name,
+      version: svc.version,
+      description: cbomData.crypto_cipher_suite ? `${cbomData.crypto_protocol || ""} ${cbomData.crypto_protocol_version || ""} - ${cbomData.crypto_cipher_suite || ""}`.trim() : svc.name,
+      algorithmMode: cbomData.crypto_cipher_suite || null,
+      primitiveType: cbomData.crypto_protocol || null,
+      parameterSetIdentifier: cbomData.crypto_key_exchange || null,
+      curve: cbomData.crypto_key_exchange?.includes("25519") ? "X25519" : cbomData.crypto_key_exchange?.includes("ECDH") ? "P-256" : null,
+      nistQuantumSecurityLevel: riskToLevel[risk] || null,
+      rawData: svc,
+    });
+  }
+
+  const riskCounts = { high: 0, medium: 0, low: 0 };
+  for (const svc of services) {
+    const risk = (svc.properties.find((p: any) => p.name === "cbom:risk:rating")?.value || "low") as keyof typeof riskCounts;
+    if (riskCounts[risk] !== undefined) riskCounts[risk]++;
+  }
+
+  const summary = [
+    `RFC 5424 ingestion complete.`,
+    `Records processed: ${records.length}`,
+    `Services extracted: ${services.length}`,
+    `Risk: ${riskCounts.high} high, ${riskCounts.medium} medium, ${riskCounts.low} low`,
+    `CBOM saved as: ${filename} (ID: ${cbomFile.id})`,
+    `Tenant: ${tenant}`,
+  ].join("\n");
+
+  return { cbomFileId: cbomFile.id, recordsProcessed: records.length, servicesFound: services.length, cbomJson, summary };
 }
 
 // Helper function to execute a script command

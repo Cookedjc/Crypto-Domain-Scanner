@@ -142,6 +142,7 @@ export const scheduledScripts = pgTable("scheduled_scripts", {
   description: text("description"),
   command: text("command").notNull(),
   outputPath: text("output_path"), // Directory path to write script results
+  scriptType: text("script_type").default("bash"), // "bash" | "rfc5424"
   isEnabled: boolean("is_enabled").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -211,19 +212,24 @@ export type ScriptExecution = typeof scriptExecutions.$inferSelect;
 export type InsertScriptExecution = typeof scriptExecutions.$inferInsert;
 
 // API validation schemas
+export const SCRIPT_TYPES = ["bash", "rfc5424"] as const;
+export type ScriptType = typeof SCRIPT_TYPES[number];
+
 export const createScriptSchema = z.object({
   name: z.string().min(1, "Script name is required"),
   description: z.string().optional(),
-  command: z.string().min(1, "Command is required"),
+  command: z.string().min(1, "Command or file path is required"),
   outputPath: z.string().optional(),
+  scriptType: z.enum(SCRIPT_TYPES).default("bash"),
   isEnabled: z.boolean().default(true),
 });
 
 export const updateScriptSchema = z.object({
   name: z.string().min(1, "Script name is required").optional(),
   description: z.string().optional(),
-  command: z.string().min(1, "Command is required").optional(),
+  command: z.string().min(1, "Command or file path is required").optional(),
   outputPath: z.string().nullable().optional(),
+  scriptType: z.enum(SCRIPT_TYPES).optional(),
   isEnabled: z.boolean().optional(),
 });
 

@@ -1,0 +1,1079 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.7.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "serialNumber": "urn:uuid:9bef81f7-5cee-4f99-95ed-5631eb4ca5a8",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-04-14T16:25:00Z",
+    "lifecycles": [
+      {
+        "phase": "operations"
+      }
+    ],
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "Gateway RFC5424 to CBOM Ingestion Example",
+          "version": "1.0.0",
+          "supplier": {
+            "name": "OpenAI sample generator"
+          }
+        }
+      ]
+    },
+    "component": {
+      "type": "platform",
+      "name": "Gateway Log Reader Ingestion Example",
+      "version": "2026.04",
+      "description": "Sample CycloneDX 1.7 CBOM-style BOM derived from RFC 5424 gateway telemetry for agentic ingestion and parsing workflows."
+    },
+    "properties": [
+      {
+        "name": "cbom:profile",
+        "value": "log-ingestion-example"
+      },
+      {
+        "name": "cbom:source:type",
+        "value": "syslog"
+      },
+      {
+        "name": "cbom:source:format",
+        "value": "RFC5424"
+      },
+      {
+        "name": "cbom:source:producer",
+        "value": "gateway"
+      },
+      {
+        "name": "cbom:source:sdid:gateway",
+        "value": "gateway@32473"
+      },
+      {
+        "name": "cbom:source:sdid:cbom",
+        "value": "cbom@32473"
+      },
+      {
+        "name": "cbom:ingestion:intent",
+        "value": "Demonstrate extraction of cryptographic inventory facts from gateway logs into CycloneDX 1.7 service properties."
+      },
+      {
+        "name": "cbom:tenant",
+        "value": "acme-financial"
+      }
+    ]
+  },
+  "services": [
+    {
+      "bom-ref": "urn:cbom:service:payments-api",
+      "group": "acme-financial",
+      "name": "payments-api",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.10:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.3"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_AES_256_GCM_SHA384"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "X25519"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "RSA-PSS"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "sha256WithRSAEncryption"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "api-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5001"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-TLS-001"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "dmz"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.10"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.10"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "TLS session established"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "low"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:auth-api",
+      "group": "acme-financial",
+      "name": "auth-api",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.11:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.2"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "ECDHE"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "RSA"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "sha256WithRSAEncryption"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "api-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5002"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-TLS-002"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "dmz"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.11"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.11"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "TLS downgrade detected"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "medium"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:web-portal",
+      "group": "acme-financial",
+      "name": "web-portal",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.12:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.3"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_CHACHA20_POLY1305_SHA256"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "X25519"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "ECDSA"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "ecdsa-with-SHA256"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "waf-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5003"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-WAF-003"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "edge"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.12"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.12"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "Request allowed"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "low"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:partner-api",
+      "group": "acme-financial",
+      "name": "partner-api",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.13:8443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.2"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_RSA_WITH_AES_256_CBC_SHA"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "RSA"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "RSA"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "sha1WithRSAEncryption"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "api-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5004"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-TLS-004"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "dmz"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.13"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.13"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "8443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "Weak cipher detected"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "high"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:internal-ledger",
+      "group": "acme-financial",
+      "name": "internal-ledger",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "10.0.1.5:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.3"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_AES_128_GCM_SHA256"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "X25519"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "RSA-PSS"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "sha256WithRSAEncryption"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "api-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5005"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-TLS-005"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "internal"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "10.0.0.5"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "10.0.1.5"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "Internal service communication"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "low"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:mobile-api",
+      "group": "acme-financial",
+      "name": "mobile-api",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.14:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.3"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_AES_256_GCM_SHA384"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "X25519"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "ECDSA"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "ecdsa-with-SHA384"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "api-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5006"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-TLS-006"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "dmz"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.14"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.14"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "Mobile session established"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "low"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:openbanking-api",
+      "group": "acme-financial",
+      "name": "openbanking-api",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.15:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.3"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_AES_128_GCM_SHA256"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "X25519"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "RSA-PSS"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "sha256WithRSAEncryption"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "api-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5007"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-TLS-007"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "edge"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.15"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.15"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "FAPI endpoint access"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "low"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:admin-portal",
+      "group": "acme-financial",
+      "name": "admin-portal",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.16:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.2"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "ECDHE"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "RSA"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "sha256WithRSAEncryption"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "waf-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5008"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-WAF-008"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "edge"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.16"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.16"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "Admin access observed"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "medium"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:reporting-api",
+      "group": "acme-financial",
+      "name": "reporting-api",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.17:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.3"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_AES_256_GCM_SHA384"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "X25519"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "RSA-PSS"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "sha256WithRSAEncryption"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "api-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5009"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-TLS-009"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "dmz"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.17"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.17"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "Reporting request processed"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "low"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    },
+    {
+      "bom-ref": "urn:cbom:service:legacy-core",
+      "group": "acme-financial",
+      "name": "legacy-core",
+      "version": "observed-2026-04-14",
+      "provider": {
+        "name": "Acme Financial"
+      },
+      "endpoints": [
+        "203.0.113.18:443"
+      ],
+      "authenticated": true,
+      "x-trust-boundary": true,
+      "properties": [
+        {
+          "name": "cbom:asset:type",
+          "value": "service"
+        },
+        {
+          "name": "cbom:crypto:protocol",
+          "value": "TLS"
+        },
+        {
+          "name": "cbom:crypto:protocolVersion",
+          "value": "1.0"
+        },
+        {
+          "name": "cbom:crypto:cipherSuite",
+          "value": "TLS_RSA_WITH_3DES_EDE_CBC_SHA"
+        },
+        {
+          "name": "cbom:crypto:keyExchange",
+          "value": "RSA"
+        },
+        {
+          "name": "cbom:crypto:authentication",
+          "value": "RSA"
+        },
+        {
+          "name": "cbom:crypto:certificate:signatureAlgorithm",
+          "value": "sha1WithRSAEncryption"
+        },
+        {
+          "name": "cbom:crypto:materialState",
+          "value": "active"
+        },
+        {
+          "name": "cbom:crypto:observationSource",
+          "value": "gateway-telemetry"
+        },
+        {
+          "name": "cbom:telemetry:gatewayApp",
+          "value": "api-gateway"
+        },
+        {
+          "name": "cbom:telemetry:gatewayPid",
+          "value": "5010"
+        },
+        {
+          "name": "cbom:telemetry:gatewayMsgId",
+          "value": "GW-TLS-010"
+        },
+        {
+          "name": "cbom:telemetry:zone",
+          "value": "legacy"
+        },
+        {
+          "name": "cbom:telemetry:srcIp",
+          "value": "198.51.100.18"
+        },
+        {
+          "name": "cbom:telemetry:dstIp",
+          "value": "203.0.113.18"
+        },
+        {
+          "name": "cbom:telemetry:dstPort",
+          "value": "443"
+        },
+        {
+          "name": "cbom:telemetry:eventMessage",
+          "value": "Legacy system detected"
+        },
+        {
+          "name": "cbom:risk:rating",
+          "value": "high"
+        },
+        {
+          "name": "cbom:parser:sourceFormat",
+          "value": "RFC5424"
+        },
+        {
+          "name": "cbom:parser:sdid",
+          "value": "cbom@32473"
+        }
+      ]
+    }
+  ],
+  "properties": [
+    {
+      "name": "cbom:mapping:rfc5424.hostname",
+      "value": "metadata/component or service-scoped telemetry property"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.app-name",
+      "value": "cbom:telemetry:gatewayApp"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.procid",
+      "value": "cbom:telemetry:gatewayPid"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.msgid",
+      "value": "cbom:telemetry:gatewayMsgId"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.structured-data.gateway.tenant",
+      "value": "service.group"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.structured-data.cbom.asset_bom_ref",
+      "value": "service.bom-ref"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.structured-data.cbom.crypto_protocol",
+      "value": "cbom:crypto:protocol"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.structured-data.cbom.crypto_protocol_version",
+      "value": "cbom:crypto:protocolVersion"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.structured-data.cbom.crypto_cipher_suite",
+      "value": "cbom:crypto:cipherSuite"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.structured-data.cbom.crypto_key_exchange",
+      "value": "cbom:crypto:keyExchange"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.structured-data.cbom.crypto_authentication",
+      "value": "cbom:crypto:authentication"
+    },
+    {
+      "name": "cbom:mapping:rfc5424.structured-data.cbom.crypto_certificate_signature_algorithm",
+      "value": "cbom:crypto:certificate:signatureAlgorithm"
+    }
+  ]
+}

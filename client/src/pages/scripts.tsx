@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   Plus, Play, Trash2, Clock, Variable, Terminal, History, 
   Calendar, CheckCircle, XCircle, Loader2, AlertCircle, Edit2,
-  FlaskConical, FolderOpen, ChevronUp, Folder
+  FlaskConical, FolderOpen, ChevronUp, Folder, FileInput, Download, Eye
 } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 import type { ScheduledScript, ScriptVariable, ScriptSchedule, ScriptExecution } from "@shared/schema";
@@ -97,9 +97,13 @@ function ScriptsTab() {
   const [isTestOpen, setIsTestOpen] = useState(false);
   const [isDirOpen, setIsDirOpen] = useState(false);
   const [dirPath, setDirPath] = useState(".");
-  const [newScript, setNewScript] = useState({ name: "", description: "", command: "", outputPath: "" });
+  const [newScript, setNewScript] = useState({ name: "", description: "", command: "", outputPath: "", scriptType: "bash" as "bash" | "rfc5424" });
   const [editScript, setEditScript] = useState<ScheduledScript | null>(null);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [rfc5424Preview, setRfc5424Preview] = useState<any>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [isIngestResultOpen, setIsIngestResultOpen] = useState(false);
+  const [ingestResult, setIngestResult] = useState<any>(null);
 
   const { data: scripts, isLoading } = useQuery<ScheduledScript[]>({
     queryKey: ["/api/scripts"],
@@ -114,6 +118,26 @@ function ScriptsTab() {
     enabled: isDirOpen,
   });
 
+  const previewRfc5424 = async (filePath: string) => {
+    if (!filePath) return;
+    setIsPreviewLoading(true);
+    setRfc5424Preview(null);
+    try {
+      const res = await fetch("/api/scripts/preview-rfc5424", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePath }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setRfc5424Preview(data);
+    } catch (err: any) {
+      toast({ title: "Preview failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
   const createMutation = useMutation({
     mutationFn: async (data: typeof newScript) => {
       return apiRequest("POST", "/api/scripts", data);
@@ -121,7 +145,8 @@ function ScriptsTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scripts"] });
       setIsCreateOpen(false);
-      setNewScript({ name: "", description: "", command: "", outputPath: "" });
+      setNewScript({ name: "", description: "", command: "", outputPath: "", scriptType: "bash" });
+      setRfc5424Preview(null);
       toast({ title: "Script created successfully" });
     },
     onError: (err: any) => {
@@ -181,6 +206,23 @@ function ScriptsTab() {
     },
   });
 
+  const ingestMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/scripts/${id}/ingest`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      return data;
+    },
+    onSuccess: (result) => {
+      setIngestResult(result);
+      setIsIngestResultOpen(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/cbom/files"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Ingestion failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const toggleMutation = useMutation({
     mutationFn: async ({ id, isEnabled }: { id: number; isEnabled: boolean }) => {
       return apiRequest("PATCH", `/api/scripts/${id}`, { isEnabled });
@@ -216,17 +258,58 @@ function ScriptsTab() {
               New Script
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Script</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
+                <Label>Script Type</Label>
+                <Select
+                  value={newScript.scriptType}
+                  onValueChange={(v) => setNewScript({ ...newScript, scriptType: v as any, command: "", outputPath: "" })}
+                >
+                  <SelectTrigger data-testid="select-script-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="bash">
+                      <div className="flex items-center gap-2">
+                        <Terminal className="w-4 h-4" />
+                        Bash Command / REST API Call
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="rfc5424">
+                      <div className="flex items-center gap-2">
+                        <FileInput className="w-4 h-4" />
+                        RFC 5424 Syslog Ingestion → CycloneDX CBOM
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {newScript.scriptType === "rfc5424" && (
+                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 text-sm text-blue-400 space-y-1">
+                  <p className="font-semibold flex items-center gap-2">
+                    <FileInput className="w-4 h-4" />
+                    RFC 5424 Syslog → CycloneDX 1.7 CBOM Ingestion
+                  </p>
+                  <p className="text-xs text-blue-300/80">
+                    Parses RFC 5424 syslog files containing <code className="font-mono">cbom@32473</code> structured data elements.
+                    Extracts cryptographic inventory (TLS protocol, cipher suites, key exchange, certificates) and
+                    converts each entry to a CycloneDX 1.7 service with risk assessment. The result is saved directly
+                    to the CBOM Manager.
+                  </p>
+                </div>
+              )}
+
+              <div>
                 <Label>Name</Label>
                 <Input
                   value={newScript.name}
                   onChange={(e) => setNewScript({ ...newScript, name: e.target.value })}
-                  placeholder="My API Script"
+                  placeholder={newScript.scriptType === "rfc5424" ? "Gateway CBOM Ingestion" : "My API Script"}
                   data-testid="input-script-name"
                 />
               </div>
@@ -235,56 +318,132 @@ function ScriptsTab() {
                 <Input
                   value={newScript.description}
                   onChange={(e) => setNewScript({ ...newScript, description: e.target.value })}
-                  placeholder="Fetches data from external API"
+                  placeholder={newScript.scriptType === "rfc5424" ? "Ingest gateway syslog to CycloneDX CBOM" : "Fetches data from external API"}
                   data-testid="input-script-description"
                 />
               </div>
-              <div>
-                <Label>Command</Label>
-                <Textarea
-                  value={newScript.command}
-                  onChange={(e) => setNewScript({ ...newScript, command: e.target.value })}
-                  placeholder="curl -X GET https://api.example.com/data -H 'Authorization: Bearer ${API_TOKEN}'"
-                  className="font-mono min-h-32"
-                  data-testid="input-script-command"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  Use {"${VARIABLE_NAME}"} to reference stored variables
-                </p>
-              </div>
-              <div>
-                <Label>Output Directory (optional)</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={newScript.outputPath}
-                    onChange={(e) => setNewScript({ ...newScript, outputPath: e.target.value })}
-                    placeholder="./script-outputs"
-                    data-testid="input-script-output-path"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setIsDirOpen(true)}
-                    data-testid="button-browse-dir"
-                  >
-                    <FolderOpen className="w-4 h-4" />
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Script output will be saved to this directory
-                </p>
-              </div>
+
+              {newScript.scriptType === "bash" ? (
+                <>
+                  <div>
+                    <Label>Command</Label>
+                    <Textarea
+                      value={newScript.command}
+                      onChange={(e) => setNewScript({ ...newScript, command: e.target.value })}
+                      placeholder="curl -X GET https://api.example.com/data -H 'Authorization: Bearer ${API_TOKEN}'"
+                      className="font-mono min-h-32"
+                      data-testid="input-script-command"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Use {"${VARIABLE_NAME}"} to reference stored variables
+                    </p>
+                  </div>
+                  <div>
+                    <Label>Output Directory (optional)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newScript.outputPath}
+                        onChange={(e) => setNewScript({ ...newScript, outputPath: e.target.value })}
+                        placeholder="./script-outputs"
+                        data-testid="input-script-output-path"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setIsDirOpen(true)}
+                        data-testid="button-browse-dir"
+                      >
+                        <FolderOpen className="w-4 h-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Script output will be saved to this directory
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <Label>RFC 5424 Syslog File Path</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={newScript.command}
+                        onChange={(e) => { setNewScript({ ...newScript, command: e.target.value }); setRfc5424Preview(null); }}
+                        placeholder="/var/log/gateway.syslog or /tmp/rfc5424.txt"
+                        className="font-mono"
+                        data-testid="input-rfc5424-filepath"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => previewRfc5424(newScript.command)}
+                        disabled={!newScript.command || isPreviewLoading}
+                        data-testid="button-preview-rfc5424"
+                      >
+                        {isPreviewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
+                        <span className="ml-1">Preview</span>
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Absolute path to the RFC 5424 syslog file. Click Preview to validate before saving.
+                    </p>
+                  </div>
+
+                  {rfc5424Preview && (
+                    <div className="border border-border/50 rounded-lg overflow-hidden">
+                      <div className="bg-muted/30 px-4 py-2 flex items-center justify-between">
+                        <span className="text-sm font-medium flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-500" />
+                          Preview — {rfc5424Preview.cbomRecords} CBOM records found in {rfc5424Preview.totalLines} lines
+                        </span>
+                      </div>
+                      <div className="max-h-56 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/20 sticky top-0">
+                            <tr>
+                              <th className="text-left px-3 py-2 font-mono text-muted-foreground">Asset</th>
+                              <th className="text-left px-3 py-2 font-mono text-muted-foreground">Protocol</th>
+                              <th className="text-left px-3 py-2 font-mono text-muted-foreground">Cipher Suite</th>
+                              <th className="text-left px-3 py-2 font-mono text-muted-foreground">Zone</th>
+                              <th className="text-left px-3 py-2 font-mono text-muted-foreground">Risk</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rfc5424Preview.preview.map((rec: any, i: number) => (
+                              <tr key={i} className="border-t border-border/30 hover:bg-muted/10">
+                                <td className="px-3 py-2 font-mono font-semibold truncate max-w-[120px]">{rec.assetName}</td>
+                                <td className="px-3 py-2 font-mono">{rec.protocol} {rec.protocolVersion}</td>
+                                <td className="px-3 py-2 font-mono text-muted-foreground truncate max-w-[160px]" title={rec.cipherSuite}>{rec.cipherSuite}</td>
+                                <td className="px-3 py-2 font-mono">{rec.zone}</td>
+                                <td className="px-3 py-2">
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                                    rec.risk === "high" ? "bg-rose-500/20 text-rose-400" :
+                                    rec.risk === "medium" ? "bg-amber-500/20 text-amber-400" :
+                                    "bg-emerald-500/20 text-emerald-400"
+                                  }`}>
+                                    {rec.risk.toUpperCase()}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
+              <Button variant="outline" onClick={() => { setIsCreateOpen(false); setRfc5424Preview(null); }}>Cancel</Button>
               <Button 
                 onClick={() => createMutation.mutate(newScript)}
                 disabled={!newScript.name || !newScript.command || createMutation.isPending}
                 data-testid="button-save-script"
               >
                 {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Create Script
+                {newScript.scriptType === "rfc5424" ? "Save Ingestion Script" : "Create Script"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -480,6 +639,56 @@ function ScriptsTab() {
         </DialogContent>
       </Dialog>
 
+      {/* RFC 5424 Ingest Result Dialog */}
+      <Dialog open={isIngestResultOpen} onOpenChange={setIsIngestResultOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-emerald-500" />
+              RFC 5424 Ingestion Complete
+            </DialogTitle>
+          </DialogHeader>
+          {ingestResult && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="bg-muted/30 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-foreground">{ingestResult.linesProcessed}</div>
+                  <div className="text-xs text-muted-foreground">Lines Processed</div>
+                </div>
+                <div className="bg-muted/30 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-blue-400">{ingestResult.cbomRecords}</div>
+                  <div className="text-xs text-muted-foreground">CBOM Records</div>
+                </div>
+                <div className="bg-muted/30 rounded-lg p-3 text-center">
+                  <div className="text-2xl font-bold text-emerald-400">{ingestResult.componentsCreated}</div>
+                  <div className="text-xs text-muted-foreground">Components Created</div>
+                </div>
+              </div>
+              {ingestResult.savedFile && (
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                  Saved as CBOM file: <span className="font-mono text-foreground">{ingestResult.savedFile}</span>
+                </div>
+              )}
+              {ingestResult.errors?.length > 0 && (
+                <div>
+                  <Label className="text-sm text-rose-500">Parse Warnings ({ingestResult.errors.length})</Label>
+                  <pre className="text-xs bg-rose-500/10 text-rose-400 p-3 rounded overflow-x-auto font-mono max-h-32 overflow-y-auto mt-1">
+                    {ingestResult.errors.join("\n")}
+                  </pre>
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground">
+                The ingested data has been saved to the CBOM Manager. You can view it there.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setIsIngestResultOpen(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {isLoading ? (
         <div className="flex items-center justify-center py-8">
           <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -494,23 +703,38 @@ function ScriptsTab() {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {scripts.map((script) => (
+          {scripts.map((script) => {
+            const isRfc5424 = (script as any).scriptType === "rfc5424";
+            return (
             <Card key={script.id} className="border-border/50" data-testid={`script-card-${script.id}`}>
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="font-medium truncate">{script.name}</h3>
                       <Badge variant={script.isEnabled ? "default" : "secondary"}>
                         {script.isEnabled ? "Enabled" : "Disabled"}
                       </Badge>
+                      {isRfc5424 && (
+                        <Badge variant="outline" className="text-blue-400 border-blue-400/30 bg-blue-400/10 gap-1">
+                          <FileInput className="w-3 h-3" />
+                          RFC 5424 → CBOM
+                        </Badge>
+                      )}
                     </div>
                     {script.description && (
                       <p className="text-sm text-muted-foreground mb-2">{script.description}</p>
                     )}
-                    <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto font-mono">
-                      {script.command}
-                    </pre>
+                    {isRfc5424 ? (
+                      <div className="flex items-center gap-2 text-xs bg-muted/50 p-2 rounded font-mono text-blue-400/80">
+                        <FileInput className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{script.command}</span>
+                      </div>
+                    ) : (
+                      <pre className="text-xs bg-muted/50 p-2 rounded overflow-x-auto font-mono">
+                        {script.command}
+                      </pre>
+                    )}
                     <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                       <span>
                         Created {script.createdAt && formatDistanceToNow(new Date(script.createdAt), { addSuffix: true })}
@@ -529,22 +753,36 @@ function ScriptsTab() {
                       onCheckedChange={(checked) => toggleMutation.mutate({ id: script.id, isEnabled: checked })}
                       data-testid={`switch-script-${script.id}`}
                     />
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={() => testMutation.mutate(script.id)}
-                      disabled={testMutation.isPending}
-                      title="Test script"
-                      data-testid={`button-test-script-${script.id}`}
-                    >
-                      <FlaskConical className="w-4 h-4" />
-                    </Button>
+                    {isRfc5424 ? (
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() => ingestMutation.mutate(script.id)}
+                        disabled={ingestMutation.isPending}
+                        title="Run ingestion and save CBOM"
+                        className="text-blue-400 border-blue-400/30 hover:bg-blue-400/10"
+                        data-testid={`button-ingest-script-${script.id}`}
+                      >
+                        {ingestMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() => testMutation.mutate(script.id)}
+                        disabled={testMutation.isPending}
+                        title="Test script"
+                        data-testid={`button-test-script-${script.id}`}
+                      >
+                        <FlaskConical className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="outline"
                       onClick={() => executeMutation.mutate(script.id)}
                       disabled={executeMutation.isPending}
-                      title="Run script"
+                      title={isRfc5424 ? "Run ingestion (async)" : "Run script"}
                       data-testid={`button-run-script-${script.id}`}
                     >
                       <Play className="w-4 h-4" />
@@ -572,7 +810,8 @@ function ScriptsTab() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
