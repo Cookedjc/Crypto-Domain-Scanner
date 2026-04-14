@@ -296,7 +296,7 @@ function ScriptsTab() {
                     RFC 5424 Syslog → CycloneDX 1.7 CBOM Ingestion
                   </p>
                   <p className="text-xs text-blue-300/80">
-                    Parses RFC 5424 syslog files containing <code className="font-mono">cbom@32473</code> structured data elements.
+                    Parses RFC 5424 syslog files containing <code className="font-mono">cbom@[Enterprise Number / PEN]</code> structured data elements.
                     Extracts cryptographic inventory (TLS protocol, cipher suites, key exchange, certificates) and
                     converts each entry to a CycloneDX 1.7 service with risk assessment. The result is saved directly
                     to the CBOM Manager.
