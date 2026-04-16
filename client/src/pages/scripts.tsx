@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import Layout from "@/components/layout";
@@ -104,6 +104,7 @@ function ScriptsTab() {
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isIngestResultOpen, setIsIngestResultOpen] = useState(false);
   const [ingestResult, setIngestResult] = useState<any>(null);
+  const filePickerRef = useRef<HTMLInputElement>(null);
 
   const { data: scripts, isLoading } = useQuery<ScheduledScript[]>({
     queryKey: ["/api/scripts"],
@@ -370,10 +371,20 @@ function ScriptsTab() {
                       <Input
                         value={newScript.command}
                         onChange={(e) => { setNewScript({ ...newScript, command: e.target.value }); setRfc5424Preview(null); }}
-                        placeholder="/var/log/gateway.syslog or /tmp/rfc5424.txt"
+                        placeholder="/var/log/gateway.syslog or ${SYSLOG_PATH}"
                         className="font-mono"
                         data-testid="input-rfc5424-filepath"
                       />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => filePickerRef.current?.click()}
+                        title="Browse local file to set filename"
+                        data-testid="button-browse-rfc5424-file"
+                      >
+                        <FolderOpen className="w-4 h-4" />
+                      </Button>
                       <Button
                         type="button"
                         variant="outline"
@@ -385,8 +396,24 @@ function ScriptsTab() {
                         <span className="ml-1">Preview</span>
                       </Button>
                     </div>
+                    <input
+                      ref={filePickerRef}
+                      type="file"
+                      className="hidden"
+                      accept=".log,.syslog,.txt,.gz,*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setNewScript({ ...newScript, command: file.name });
+                          setRfc5424Preview(null);
+                        }
+                        e.target.value = "";
+                      }}
+                      data-testid="input-rfc5424-file-picker"
+                    />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Absolute path to the RFC 5424 syslog file. Click Preview to validate before saving.
+                      Enter the absolute server-side path, or use the folder icon to pick a local file and set its name.
+                      Use <code className="font-mono text-[11px]">{"${VAR_NAME}"}</code> for a path that changes at runtime.
                     </p>
                   </div>
 
