@@ -2,7 +2,14 @@ node_modules
 dist
 .git
 .gitignore
+.github
 *.md
+!README.md
 .env
 .env.*
-migrations
+.local
+attached_assets
+screenshots
+.replit
+replit.nix
+generated-icon.png
