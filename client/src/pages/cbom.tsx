@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import Layout from "@/components/layout";
 import { useCbomFiles, useCbomComponents, useUploadCbom, useDeleteCbomFile, useDeduplicateCbom, useOutputDirectories, useCreateOutputDirectory, useUpdateOutputDirectory, useDeleteOutputDirectory, useScanDirectories, useImportDirectoryFile } from "@/hooks/use-cbom";
 import { useMatchPolicies } from "@/hooks/use-policies";
@@ -242,6 +242,49 @@ export default function CbomPage() {
   const [newDirPath, setNewDirPath] = useState("");
   const [showDirBrowser, setShowDirBrowser] = useState(false);
   const [scanResults, setScanResults] = useState<any>(null);
+
+  // Synced top scrollbar for the components table
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const topInnerRef = useRef<HTMLDivElement>(null);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
+
+  useEffect(() => {
+    const top = topScrollRef.current;
+    const content = contentScrollRef.current;
+    const topInner = topInnerRef.current;
+    const table = tableRef.current;
+    if (!top || !content || !topInner || !table) return;
+
+    // Keep phantom scrollbar width in sync with actual table width
+    const ro = new ResizeObserver(() => {
+      topInner.style.width = table.scrollWidth + "px";
+    });
+    ro.observe(table);
+
+    // Sync scroll positions bidirectionally (guard against loops)
+    let syncing = false;
+    const syncFromTop = () => {
+      if (syncing) return;
+      syncing = true;
+      content.scrollLeft = top.scrollLeft;
+      syncing = false;
+    };
+    const syncFromContent = () => {
+      if (syncing) return;
+      syncing = true;
+      top.scrollLeft = content.scrollLeft;
+      syncing = false;
+    };
+    top.addEventListener("scroll", syncFromTop);
+    content.addEventListener("scroll", syncFromContent);
+
+    return () => {
+      ro.disconnect();
+      top.removeEventListener("scroll", syncFromTop);
+      content.removeEventListener("scroll", syncFromContent);
+    };
+  }, []);
 
   const policyViolationsByComponent = useMemo(() => {
     if (!policyMatchResults?.results) return new Map<number, any[]>();
@@ -613,8 +656,21 @@ export default function CbomPage() {
 
             {/* Components Table */}
             <Card className="border-border/50 overflow-hidden mt-4">
-              <div className="overflow-x-auto">
-                <table className="w-full" data-testid="table-components">
+              {/* Sticky top scrollbar — synced with the content below */}
+              <div
+                ref={topScrollRef}
+                className="overflow-x-scroll overflow-y-hidden sticky top-0 z-10 bg-background border-b border-border/20"
+                style={{ height: 14 }}
+              >
+                <div ref={topInnerRef} style={{ height: 1 }} />
+              </div>
+              {/* Table content — native bottom scrollbar hidden */}
+              <div
+                ref={contentScrollRef}
+                className="overflow-x-auto [&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: "none" } as React.CSSProperties}
+              >
+                <table ref={tableRef} className="w-full" data-testid="table-components">
                   <thead className="bg-muted/30 border-b border-border/50">
                     <tr>
                       {SORTABLE_FIELDS.map(field => (
