@@ -236,6 +236,8 @@ export default function CbomPage() {
   const [dedupFields, setDedupFields] = useState<string[]>(["name", "componentType"]);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [complianceFilter, setComplianceFilter] = useState<string | null>(null);
+  const [fileFilter, setFileFilter] = useState<Set<number>>(new Set());
+  const [dateFilter, setDateFilter] = useState<string | null>(null);
   const [policyMatchResults, setPolicyMatchResults] = useState<any>(null);
   const [showAddDir, setShowAddDir] = useState(false);
   const [newDirLabel, setNewDirLabel] = useState("");
@@ -440,18 +442,65 @@ export default function CbomPage() {
     );
   };
 
+  // Map fileId → file for date lookups
+  const fileMap = useMemo(() => {
+    const m = new Map<number, typeof files extends (infer T)[] | undefined ? T : never>();
+    files?.forEach(f => m.set(f.id, f as any));
+    return m;
+  }, [files]);
+
+  const toggleFileFilter = (id: number) => {
+    setFileFilter(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const clearAllFilters = () => {
+    setSearch("");
+    setTypeFilter(null);
+    setFileFilter(new Set());
+    setDateFilter(null);
+  };
+
+  const hasActiveFilters = search || typeFilter || fileFilter.size > 0 || dateFilter;
+
   // Filter and sort components
   const componentTypes = Array.from(new Set(components?.map(c => c.componentType).filter(Boolean)));
-  
+
   let filteredComponents = components?.filter(c => {
-    const matchesSearch = !search || 
+    const matchesSearch = !search ||
       c.name?.toLowerCase().includes(search.toLowerCase()) ||
       c.componentType?.toLowerCase().includes(search.toLowerCase()) ||
       c.oid?.toLowerCase().includes(search.toLowerCase());
     const matchesType = !typeFilter || c.componentType === typeFilter;
     const compliance = complianceResults.get(c.id);
     const matchesCompliance = !complianceFilter || compliance?.status === complianceFilter;
-    return matchesSearch && matchesType && matchesCompliance;
+
+    // File filter (multi-select)
+    const matchesFile = fileFilter.size === 0 || fileFilter.has(c.fileId);
+
+    // Date filter — based on the parent file's uploadedAt
+    let matchesDate = true;
+    if (dateFilter) {
+      const file = fileMap.get(c.fileId);
+      const uploadedAt = file?.uploadedAt ? new Date(file.uploadedAt) : null;
+      if (uploadedAt) {
+        const now = Date.now();
+        if (dateFilter === "today") {
+          matchesDate = uploadedAt.toDateString() === new Date().toDateString();
+        } else if (dateFilter === "7days") {
+          matchesDate = now - uploadedAt.getTime() <= 7 * 24 * 60 * 60 * 1000;
+        } else if (dateFilter === "30days") {
+          matchesDate = now - uploadedAt.getTime() <= 30 * 24 * 60 * 60 * 1000;
+        }
+      } else {
+        matchesDate = false;
+      }
+    }
+
+    return matchesSearch && matchesType && matchesCompliance && matchesFile && matchesDate;
   }) || [];
 
   filteredComponents = [...filteredComponents].sort((a, b) => {
@@ -620,38 +669,140 @@ export default function CbomPage() {
 
           <TabsContent value="components">
             {/* Filters & Search */}
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search components..."
-                  className="pl-9 bg-card border-border/50"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  data-testid="input-search-components"
-                />
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                {typeFilter && (
-                  <Badge variant="secondary" className="gap-1" data-testid="badge-active-filter">
-                    {typeFilter}
-                    <button onClick={() => setTypeFilter(null)} className="ml-1" data-testid="button-clear-filter">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
+            <div className="space-y-3">
+              {/* Row 1: Search + clear all */}
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search by name, type or OID…"
+                    className="pl-9 bg-card border-border/50"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    data-testid="input-search-components"
+                  />
+                </div>
+                {hasActiveFilters && (
+                  <Button variant="ghost" size="sm" onClick={clearAllFilters} className="gap-1 text-muted-foreground hover:text-foreground shrink-0" data-testid="button-clear-all-filters">
+                    <X className="w-3 h-3" />
+                    Clear all
+                  </Button>
                 )}
-                {componentTypes.map(type => (
+              </div>
+
+              {/* Row 2: Component Type filter buttons */}
+              {componentTypes.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground font-mono uppercase tracking-wide shrink-0">Type</span>
                   <Button
-                    key={type}
-                    variant={typeFilter === type ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setTypeFilter(typeFilter === type ? null : type!)}
-                    data-testid={`button-filter-${type}`}
+                    variant={!typeFilter ? "default" : "outline"}
+                    onClick={() => setTypeFilter(null)}
+                    className="h-7 text-xs"
+                    data-testid="button-filter-all-types"
                   >
-                    {type}
+                    All
+                  </Button>
+                  {componentTypes.map(type => (
+                    <Button
+                      key={type}
+                      size="sm"
+                      variant={typeFilter === type ? "default" : "outline"}
+                      onClick={() => setTypeFilter(typeFilter === type ? null : type!)}
+                      className="h-7 text-xs"
+                      data-testid={`button-filter-${type}`}
+                    >
+                      {type}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {/* Row 3: File filter buttons (multi-select) */}
+              {files && files.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-muted-foreground font-mono uppercase tracking-wide shrink-0">File</span>
+                  <Button
+                    size="sm"
+                    variant={fileFilter.size === 0 ? "default" : "outline"}
+                    onClick={() => setFileFilter(new Set())}
+                    className="h-7 text-xs"
+                    data-testid="button-filter-all-files"
+                  >
+                    All files
+                  </Button>
+                  {files.map(file => (
+                    <Button
+                      key={file.id}
+                      size="sm"
+                      variant={fileFilter.has(file.id) ? "default" : "outline"}
+                      onClick={() => toggleFileFilter(file.id)}
+                      className="h-7 text-xs max-w-[200px] truncate"
+                      title={file.filename}
+                      data-testid={`button-filter-file-${file.id}`}
+                    >
+                      <FileJson className="w-3 h-3 mr-1 shrink-0" />
+                      <span className="truncate">{file.filename}</span>
+                      {file.componentCount != null && (
+                        <span className="ml-1 opacity-60 shrink-0">({file.componentCount})</span>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              )}
+
+              {/* Row 4: Date filter buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground font-mono uppercase tracking-wide shrink-0">Uploaded</span>
+                {[
+                  { value: null, label: "Any date" },
+                  { value: "today", label: "Today" },
+                  { value: "7days", label: "Last 7 days" },
+                  { value: "30days", label: "Last 30 days" },
+                ].map(opt => (
+                  <Button
+                    key={opt.value ?? "any"}
+                    size="sm"
+                    variant={dateFilter === opt.value ? "default" : "outline"}
+                    onClick={() => setDateFilter(opt.value)}
+                    className="h-7 text-xs"
+                    data-testid={`button-filter-date-${opt.value ?? "any"}`}
+                  >
+                    {opt.label}
                   </Button>
                 ))}
               </div>
+
+              {/* Active filter summary badge */}
+              {(fileFilter.size > 0 || typeFilter || dateFilter) && (
+                <div className="flex items-center gap-2 flex-wrap pt-1">
+                  <span className="text-xs text-muted-foreground">Active filters:</span>
+                  {typeFilter && (
+                    <Badge variant="secondary" className="gap-1 text-xs h-5" data-testid="badge-active-type-filter">
+                      Type: {typeFilter}
+                      <button onClick={() => setTypeFilter(null)}><X className="w-2.5 h-2.5" /></button>
+                    </Badge>
+                  )}
+                  {fileFilter.size > 0 && Array.from(fileFilter).map(fid => {
+                    const f = fileMap.get(fid);
+                    return f ? (
+                      <Badge key={fid} variant="secondary" className="gap-1 text-xs h-5" data-testid={`badge-active-file-filter-${fid}`}>
+                        <FileJson className="w-2.5 h-2.5" />
+                        {f.filename}
+                        <button onClick={() => toggleFileFilter(fid)}><X className="w-2.5 h-2.5" /></button>
+                      </Badge>
+                    ) : null;
+                  })}
+                  {dateFilter && (
+                    <Badge variant="secondary" className="gap-1 text-xs h-5" data-testid="badge-active-date-filter">
+                      <Clock className="w-2.5 h-2.5" />
+                      {dateFilter === "today" ? "Today" : dateFilter === "7days" ? "Last 7 days" : "Last 30 days"}
+                      <button onClick={() => setDateFilter(null)}><X className="w-2.5 h-2.5" /></button>
+                    </Badge>
+                  )}
+                  <span className="text-xs text-muted-foreground ml-1">— {filteredComponents.length} of {components?.length ?? 0} components</span>
+                </div>
+              )}
             </div>
 
             {/* Components Table */}
