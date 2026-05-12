@@ -787,6 +787,7 @@ function RBACTab() {
     cbom: "CBOM Manager",
     scripts: "Scripts Manager",
     reports: "Reports",
+    keys: "Key Manager",
     settings: "Settings",
   };
 

@@ -11,6 +11,7 @@ import ScriptsPage from "@/pages/scripts";
 import PoliciesPage from "@/pages/policies";
 import ReportsPage from "@/pages/reports";
 import SettingsPage from "@/pages/settings";
+import KeyManagerPage from "@/pages/key-manager";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import { useLogin, useLogout, useSwitchUser } from "@/hooks/use-auth";
@@ -27,6 +28,7 @@ function Router() {
       <Route path="/policies" component={PoliciesPage} />
       <Route path="/reports" component={ReportsPage} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/keys" component={KeyManagerPage} />
       <Route component={NotFound} />
     </Switch>
   );

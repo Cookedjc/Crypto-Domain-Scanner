@@ -16,6 +16,7 @@ import {
   createReportSchema, updateReportSchema,
   createOutputDirectorySchema, updateOutputDirectorySchema,
   createGithubRepoSchema, updateGithubRepoSchema,
+  generateKeySchema, insertAzureKvSchema,
   loginSchema,
   type CbomComponent, type SecurityPolicy
 } from "@shared/schema";
@@ -1795,6 +1796,9 @@ export async function registerRoutes(
     res.json(sanitizeGithubRepo(updated));
   });
 
+  // Key Manager routes
+  keyRoutes(app);
+
   // Start scheduler
   startScheduler();
 
@@ -2341,6 +2345,342 @@ function calculateNextRun(schedule: any): Date | null {
   }
   
   return null;
+}
+
+// ============================================================
+// Key Manager Routes
+// ============================================================
+
+const _SESSION_SECRET = process.env.SESSION_SECRET || "cipherguard-fallback-dev-secret-32c";
+const KMS_MASTER_KEY = crypto.scryptSync(_SESSION_SECRET, "cipherguard-kms-v1", 32);
+
+function encryptPrivateKey(keyMaterial: Buffer | Uint8Array): string {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", KMS_MASTER_KEY, iv);
+  const enc = Buffer.concat([cipher.update(Buffer.from(keyMaterial)), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString("hex")}:${tag.toString("hex")}:${enc.toString("hex")}`;
+}
+
+async function doGenerateKey(algorithm: string): Promise<{
+  publicKey: string | null;
+  privateKeyEncrypted: string;
+  keyType: string;
+  keyLength: number | null;
+  nistQuantumSecurityLevel: number | null;
+  isPqc: boolean;
+}> {
+  let publicKey: string | null = null;
+  let privateKeyEncrypted = "";
+  let keyType = "keypair";
+  let keyLength: number | null = null;
+  let nistLevel: number | null = null;
+  let isPqc = false;
+
+  if (algorithm === "AES-256-GCM") {
+    const key = crypto.generateKeySync("aes", { length: 256 });
+    privateKeyEncrypted = encryptPrivateKey(key.export() as Buffer);
+    keyType = "symmetric"; keyLength = 256;
+  } else if (algorithm === "AES-128-GCM") {
+    const key = crypto.generateKeySync("aes", { length: 128 });
+    privateKeyEncrypted = encryptPrivateKey(key.export() as Buffer);
+    keyType = "symmetric"; keyLength = 128;
+  } else if (algorithm === "RSA-2048") {
+    const { publicKey: pub, privateKey: priv } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    publicKey = pub; privateKeyEncrypted = encryptPrivateKey(Buffer.from(priv, "utf8")); keyLength = 2048;
+  } else if (algorithm === "RSA-4096") {
+    const { publicKey: pub, privateKey: priv } = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 4096,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    publicKey = pub; privateKeyEncrypted = encryptPrivateKey(Buffer.from(priv, "utf8")); keyLength = 4096;
+  } else if (algorithm === "ECDH-P256") {
+    const { publicKey: pub, privateKey: priv } = crypto.generateKeyPairSync("ec", {
+      namedCurve: "P-256",
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    publicKey = pub; privateKeyEncrypted = encryptPrivateKey(Buffer.from(priv, "utf8")); keyLength = 256;
+  } else if (algorithm === "ECDH-P384") {
+    const { publicKey: pub, privateKey: priv } = crypto.generateKeyPairSync("ec", {
+      namedCurve: "P-384",
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    publicKey = pub; privateKeyEncrypted = encryptPrivateKey(Buffer.from(priv, "utf8")); keyLength = 384;
+  } else if (algorithm === "Ed25519") {
+    const { publicKey: pub, privateKey: priv } = crypto.generateKeyPairSync("ed25519", {
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+    });
+    publicKey = pub; privateKeyEncrypted = encryptPrivateKey(Buffer.from(priv, "utf8")); keyLength = 256;
+  } else if (algorithm === "ML-KEM-768") {
+    const { mlkem768 } = await import("@noble/post-quantum/ml-kem");
+    const kp = mlkem768.keygen();
+    publicKey = Buffer.from(kp.publicKey).toString("base64");
+    privateKeyEncrypted = encryptPrivateKey(Buffer.from(kp.secretKey));
+    isPqc = true; nistLevel = 3; keyLength = 768;
+  } else if (algorithm === "ML-KEM-1024") {
+    const { mlkem1024 } = await import("@noble/post-quantum/ml-kem");
+    const kp = mlkem1024.keygen();
+    publicKey = Buffer.from(kp.publicKey).toString("base64");
+    privateKeyEncrypted = encryptPrivateKey(Buffer.from(kp.secretKey));
+    isPqc = true; nistLevel = 5; keyLength = 1024;
+  } else if (algorithm === "ML-DSA-65") {
+    const { mldsa65 } = await import("@noble/post-quantum/ml-dsa");
+    const kp = mldsa65.keygen();
+    publicKey = Buffer.from(kp.publicKey).toString("base64");
+    privateKeyEncrypted = encryptPrivateKey(Buffer.from(kp.secretKey));
+    isPqc = true; nistLevel = 3; keyLength = 1952;
+  } else if (algorithm === "ML-DSA-87") {
+    const { mldsa87 } = await import("@noble/post-quantum/ml-dsa");
+    const kp = mldsa87.keygen();
+    publicKey = Buffer.from(kp.publicKey).toString("base64");
+    privateKeyEncrypted = encryptPrivateKey(Buffer.from(kp.secretKey));
+    isPqc = true; nistLevel = 5; keyLength = 2592;
+  } else if (algorithm === "SLH-DSA-SHA2-128s") {
+    const { slh_dsa_sha2_128s } = await import("@noble/post-quantum/slh-dsa");
+    const kp = slh_dsa_sha2_128s.keygen();
+    publicKey = Buffer.from(kp.publicKey).toString("base64");
+    privateKeyEncrypted = encryptPrivateKey(Buffer.from(kp.secretKey));
+    isPqc = true; nistLevel = 1; keyLength = 64;
+  } else {
+    throw new Error(`Unknown algorithm: ${algorithm}`);
+  }
+
+  return { publicKey, privateKeyEncrypted, keyType, keyLength, nistQuantumSecurityLevel: nistLevel, isPqc };
+}
+
+function keyRoutes(app: Express) {
+  // List keys (strip private key material)
+  app.get("/api/keys", requireAuth, async (req, res) => {
+    try {
+      const keys = await storage.getCryptoKeys();
+      const safe = keys.map(({ privateKeyEncrypted, ...k }) => k);
+      res.json(safe);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch keys" });
+    }
+  });
+
+  // Generate new key
+  app.post("/api/keys/generate", requireAuth, async (req, res) => {
+    try {
+      const parsed = generateKeySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message });
+
+      const { name, algorithm, purpose, expiresAt, tags } = parsed.data;
+      const generated = await doGenerateKey(algorithm);
+
+      const key = await storage.createCryptoKey({
+        name,
+        algorithm,
+        purpose,
+        keyType: generated.keyType,
+        status: "pre-active",
+        publicKey: generated.publicKey,
+        privateKeyEncrypted: generated.privateKeyEncrypted,
+        keyLength: generated.keyLength,
+        isPqc: generated.isPqc,
+        nistQuantumSecurityLevel: generated.nistQuantumSecurityLevel,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+        tags: tags || [],
+        createdBy: (req.session as any)?.userId ?? null,
+      } as any);
+
+      await storage.createKeyAuditEntry({
+        keyId: key.id,
+        keyName: key.name,
+        action: "generated",
+        performedBy: (req.session as any)?.userId ?? null,
+        performedByEmail: (req.session as any)?.userEmail ?? null,
+        details: { algorithm, purpose, isPqc: generated.isPqc, nistLevel: generated.nistQuantumSecurityLevel },
+      });
+
+      const { privateKeyEncrypted: _enc, ...safeKey } = key;
+      res.status(201).json(safeKey);
+    } catch (err: any) {
+      console.error("Key generation error:", err);
+      res.status(500).json({ message: err.message || "Key generation failed" });
+    }
+  });
+
+  // Activate
+  app.patch("/api/keys/:id/activate", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const key = await storage.getCryptoKey(id);
+      if (!key) return res.status(404).json({ message: "Key not found" });
+      const updated = await storage.updateCryptoKey(id, { status: "active", activatedAt: new Date() } as any);
+      await storage.createKeyAuditEntry({ keyId: id, keyName: key.name, action: "activated",
+        performedBy: (req.session as any)?.userId ?? null, performedByEmail: (req.session as any)?.userEmail ?? null,
+        details: { previousStatus: key.status } });
+      const { privateKeyEncrypted: _, ...safe } = updated!;
+      res.json(safe);
+    } catch { res.status(500).json({ message: "Failed to activate key" }); }
+  });
+
+  // Suspend
+  app.patch("/api/keys/:id/suspend", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const key = await storage.getCryptoKey(id);
+      if (!key) return res.status(404).json({ message: "Key not found" });
+      const updated = await storage.updateCryptoKey(id, { status: "suspended" } as any);
+      await storage.createKeyAuditEntry({ keyId: id, keyName: key.name, action: "suspended",
+        performedBy: (req.session as any)?.userId ?? null, performedByEmail: (req.session as any)?.userEmail ?? null,
+        details: { previousStatus: key.status } });
+      const { privateKeyEncrypted: _, ...safe } = updated!;
+      res.json(safe);
+    } catch { res.status(500).json({ message: "Failed to suspend key" }); }
+  });
+
+  // Revoke
+  app.patch("/api/keys/:id/revoke", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const key = await storage.getCryptoKey(id);
+      if (!key) return res.status(404).json({ message: "Key not found" });
+      const updated = await storage.updateCryptoKey(id, { status: "deactivated", revokedAt: new Date() } as any);
+      await storage.createKeyAuditEntry({ keyId: id, keyName: key.name, action: "revoked",
+        performedBy: (req.session as any)?.userId ?? null, performedByEmail: (req.session as any)?.userEmail ?? null,
+        details: { previousStatus: key.status } });
+      const { privateKeyEncrypted: _, ...safe } = updated!;
+      res.json(safe);
+    } catch { res.status(500).json({ message: "Failed to revoke key" }); }
+  });
+
+  // Destroy (wipe key material)
+  app.delete("/api/keys/:id/destroy", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const key = await storage.getCryptoKey(id);
+      if (!key) return res.status(404).json({ message: "Key not found" });
+      await storage.updateCryptoKey(id, { status: "destroyed", privateKeyEncrypted: null,
+        publicKey: null, destroyedAt: new Date() } as any);
+      await storage.createKeyAuditEntry({ keyId: id, keyName: key.name, action: "destroyed",
+        performedBy: (req.session as any)?.userId ?? null, performedByEmail: (req.session as any)?.userEmail ?? null,
+        details: { algorithm: key.algorithm, keyMaterialDeleted: true } });
+      res.status(204).end();
+    } catch { res.status(500).json({ message: "Failed to destroy key" }); }
+  });
+
+  // Export public key
+  app.get("/api/keys/:id/export-public", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const key = await storage.getCryptoKey(id);
+      if (!key) return res.status(404).json({ message: "Key not found" });
+      if (!key.publicKey) return res.status(400).json({ message: "No public key available" });
+      await storage.createKeyAuditEntry({ keyId: id, keyName: key.name, action: "exported",
+        performedBy: (req.session as any)?.userId ?? null, performedByEmail: (req.session as any)?.userEmail ?? null,
+        details: { format: "public-only" } });
+      res.json({ publicKey: key.publicKey, algorithm: key.algorithm, name: key.name });
+    } catch { res.status(500).json({ message: "Failed to export public key" }); }
+  });
+
+  // Audit log
+  app.get("/api/keys/audit", requireAuth, async (req, res) => {
+    try {
+      const keyId = req.query.keyId ? parseInt(req.query.keyId as string) : undefined;
+      const log = await storage.getKeyAuditLog(keyId);
+      res.json(log);
+    } catch { res.status(500).json({ message: "Failed to fetch audit log" }); }
+  });
+
+  // ---- Azure Key Vault ----
+  function extractVaultName(vaultUrl: string): string {
+    const match = vaultUrl.match(/https?:\/\/([^.]+)\.vault\.azure\.net/i);
+    if (!match) throw new Error("Invalid vault URL. Expected: https://<name>.vault.azure.net");
+    return match[1];
+  }
+
+  app.get("/api/keys/azure/connections", requireAuth, async (req, res) => {
+    try { res.json(await storage.getAzureKvConnections()); }
+    catch { res.status(500).json({ message: "Failed to fetch connections" }); }
+  });
+
+  app.post("/api/keys/azure/connections", requireAuth, async (req, res) => {
+    try {
+      const parsed = insertAzureKvSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0]?.message });
+      const conn = await storage.createAzureKvConnection(parsed.data as any);
+      res.status(201).json(conn);
+    } catch { res.status(500).json({ message: "Failed to create connection" }); }
+  });
+
+  app.delete("/api/keys/azure/connections/:id", requireAuth, async (req, res) => {
+    try {
+      await storage.deleteAzureKvConnection(parseInt(req.params.id));
+      res.status(204).end();
+    } catch { res.status(500).json({ message: "Failed to delete connection" }); }
+  });
+
+  app.post("/api/keys/azure/connections/:id/test", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const conn = await storage.getAzureKvConnection(id);
+      if (!conn) return res.status(404).json({ message: "Connection not found" });
+      const vaultName = extractVaultName(conn.vaultUrl);
+      const env: any = { ...process.env };
+      if (conn.tenantId) env.AZURE_TENANT_ID = conn.tenantId;
+      if (conn.clientId) env.AZURE_CLIENT_ID = conn.clientId;
+      try {
+        await execPromise(`az keyvault show --name "${vaultName}" --query "name" -o tsv`, { env });
+        await storage.updateAzureKvConnection(id, { status: "connected", lastTestAt: new Date(), lastError: null } as any);
+        res.json({ status: "connected", vaultName });
+      } catch (cliErr: any) {
+        const errMsg = (cliErr.stderr || cliErr.message || "Azure CLI error").substring(0, 300);
+        await storage.updateAzureKvConnection(id, { status: "error", lastTestAt: new Date(), lastError: errMsg } as any);
+        res.status(400).json({ message: errMsg });
+      }
+    } catch (err: any) { res.status(500).json({ message: err.message || "Test failed" }); }
+  });
+
+  app.get("/api/keys/azure/connections/:id/keys", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const conn = await storage.getAzureKvConnection(id);
+      if (!conn) return res.status(404).json({ message: "Connection not found" });
+      const vaultName = extractVaultName(conn.vaultUrl);
+      const env: any = { ...process.env };
+      if (conn.tenantId) env.AZURE_TENANT_ID = conn.tenantId;
+      if (conn.clientId) env.AZURE_CLIENT_ID = conn.clientId;
+      const result = await execPromise(`az keyvault key list --vault-name "${vaultName}" -o json`, { env });
+      const raw: any[] = JSON.parse(result.stdout || "[]");
+      const keys = raw.map((k: any) => ({
+        name: k.name || (k.kid ? k.kid.split("/").pop() : "unknown"),
+        keyType: k.keyType || k.key_type || null,
+        enabled: k.attributes?.enabled ?? true,
+        expires: k.attributes?.expires ?? null,
+        created: k.attributes?.created ?? null,
+        id: k.kid,
+      }));
+      res.json(keys);
+    } catch (err: any) { res.status(500).json({ message: err.message || "Failed to list keys" }); }
+  });
+
+  app.post("/api/keys/azure/connections/:id/import-to-cbom", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const conn = await storage.getAzureKvConnection(id);
+      if (!conn) return res.status(404).json({ message: "Connection not found" });
+      const { keyName } = req.body;
+      if (!keyName) return res.status(400).json({ message: "keyName required" });
+      await storage.createKeyAuditEntry({
+        keyId: null, keyName: `[Azure] ${keyName}`, action: "azure-imported",
+        performedBy: (req.session as any)?.userId ?? null,
+        performedByEmail: (req.session as any)?.userEmail ?? null,
+        details: { vaultUrl: conn.vaultUrl, keyName, vaultName: conn.name },
+      });
+      res.json({ success: true, keyName, vault: conn.name });
+    } catch { res.status(500).json({ message: "Failed to import key" }); }
+  });
 }
 
 // Scheduler that runs every minute to check for due scripts

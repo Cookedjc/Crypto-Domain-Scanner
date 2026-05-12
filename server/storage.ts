@@ -4,6 +4,7 @@ import {
   scriptVariables, scheduledScripts, scriptSchedules, scriptExecutions,
   users, rolePermissions, authConfig, securityPolicies, reports, outputDirectories,
   githubRepos,
+  cryptoKeys, keyAuditLog, azureKvConnections,
   type InsertScan, type Scan, 
   type CbomFile, type CbomComponent, type InsertCbomFile, type InsertCbomComponent,
   type ScriptVariable, type InsertScriptVariable,
@@ -17,6 +18,9 @@ import {
   type Report, type InsertReport,
   type OutputDirectory, type InsertOutputDirectory,
   type GithubRepo, type InsertGithubRepo,
+  type CryptoKey, type InsertCryptoKey,
+  type KeyAuditLogEntry, type InsertKeyAuditLogEntry,
+  type AzureKvConnection, type InsertAzureKvConnection,
   USER_TYPES, MENU_ITEMS
 } from "@shared/schema";
 import { eq, desc, and, inArray, lte, isNull, or } from "drizzle-orm";
@@ -119,6 +123,23 @@ export interface IStorage {
   getGithubRepo(id: number): Promise<GithubRepo | undefined>;
   updateGithubRepo(id: number, data: Partial<InsertGithubRepo>): Promise<GithubRepo | undefined>;
   deleteGithubRepo(id: number): Promise<void>;
+
+  // Key Manager — Native Keys
+  createCryptoKey(data: InsertCryptoKey): Promise<CryptoKey>;
+  getCryptoKeys(): Promise<CryptoKey[]>;
+  getCryptoKey(id: number): Promise<CryptoKey | undefined>;
+  updateCryptoKey(id: number, data: Partial<InsertCryptoKey>): Promise<CryptoKey | undefined>;
+
+  // Key Audit Log
+  createKeyAuditEntry(entry: InsertKeyAuditLogEntry): Promise<KeyAuditLogEntry>;
+  getKeyAuditLog(keyId?: number): Promise<KeyAuditLogEntry[]>;
+
+  // Azure Key Vault Connections
+  createAzureKvConnection(data: InsertAzureKvConnection): Promise<AzureKvConnection>;
+  getAzureKvConnections(): Promise<AzureKvConnection[]>;
+  getAzureKvConnection(id: number): Promise<AzureKvConnection | undefined>;
+  updateAzureKvConnection(id: number, data: Partial<InsertAzureKvConnection>): Promise<AzureKvConnection | undefined>;
+  deleteAzureKvConnection(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -577,6 +598,71 @@ export class DatabaseStorage implements IStorage {
 
   async deleteGithubRepo(id: number): Promise<void> {
     await db.delete(githubRepos).where(eq(githubRepos.id, id));
+  }
+
+  // Key Manager — Native Keys
+  async createCryptoKey(data: InsertCryptoKey): Promise<CryptoKey> {
+    const [key] = await db.insert(cryptoKeys).values(data).returning();
+    return key;
+  }
+
+  async getCryptoKeys(): Promise<CryptoKey[]> {
+    return await db.select().from(cryptoKeys).orderBy(desc(cryptoKeys.createdAt));
+  }
+
+  async getCryptoKey(id: number): Promise<CryptoKey | undefined> {
+    const [key] = await db.select().from(cryptoKeys).where(eq(cryptoKeys.id, id));
+    return key;
+  }
+
+  async updateCryptoKey(id: number, data: Partial<InsertCryptoKey>): Promise<CryptoKey | undefined> {
+    const [updated] = await db.update(cryptoKeys)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(cryptoKeys.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Key Audit Log
+  async createKeyAuditEntry(entry: InsertKeyAuditLogEntry): Promise<KeyAuditLogEntry> {
+    const [created] = await db.insert(keyAuditLog).values(entry).returning();
+    return created;
+  }
+
+  async getKeyAuditLog(keyId?: number): Promise<KeyAuditLogEntry[]> {
+    if (keyId) {
+      return await db.select().from(keyAuditLog)
+        .where(eq(keyAuditLog.keyId, keyId))
+        .orderBy(desc(keyAuditLog.createdAt));
+    }
+    return await db.select().from(keyAuditLog).orderBy(desc(keyAuditLog.createdAt)).limit(500);
+  }
+
+  // Azure Key Vault Connections
+  async createAzureKvConnection(data: InsertAzureKvConnection): Promise<AzureKvConnection> {
+    const [created] = await db.insert(azureKvConnections).values(data).returning();
+    return created;
+  }
+
+  async getAzureKvConnections(): Promise<AzureKvConnection[]> {
+    return await db.select().from(azureKvConnections).orderBy(desc(azureKvConnections.createdAt));
+  }
+
+  async getAzureKvConnection(id: number): Promise<AzureKvConnection | undefined> {
+    const [conn] = await db.select().from(azureKvConnections).where(eq(azureKvConnections.id, id));
+    return conn;
+  }
+
+  async updateAzureKvConnection(id: number, data: Partial<InsertAzureKvConnection>): Promise<AzureKvConnection | undefined> {
+    const [updated] = await db.update(azureKvConnections)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(azureKvConnections.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteAzureKvConnection(id: number): Promise<void> {
+    await db.delete(azureKvConnections).where(eq(azureKvConnections.id, id));
   }
 }
 

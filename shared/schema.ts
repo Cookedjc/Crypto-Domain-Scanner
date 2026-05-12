@@ -260,7 +260,7 @@ export const USER_TYPES = ["admin", "superuser", "user", "viewer"] as const;
 export type UserType = typeof USER_TYPES[number];
 
 // Menu items that can be controlled via RBAC
-export const MENU_ITEMS = ["dashboard", "scans", "cbom", "scripts", "reports", "settings"] as const;
+export const MENU_ITEMS = ["dashboard", "scans", "cbom", "scripts", "reports", "keys", "settings"] as const;
 export type MenuItem = typeof MENU_ITEMS[number];
 
 // Users table
@@ -553,6 +553,91 @@ export const updateReportSchema = createReportSchema.partial();
 
 export type CreateReportRequest = z.infer<typeof createReportSchema>;
 export type UpdateReportRequest = z.infer<typeof updateReportSchema>;
+
+// ==================== Key Manager ====================
+
+export const KEY_STATUSES = ["pre-active", "active", "suspended", "deactivated", "compromised", "destroyed"] as const;
+export type KeyStatus = typeof KEY_STATUSES[number];
+
+export const KEY_ALGORITHMS = [
+  "AES-256-GCM", "AES-128-GCM",
+  "RSA-2048", "RSA-4096", "ECDH-P256", "ECDH-P384", "Ed25519",
+  "ML-KEM-768", "ML-KEM-1024", "ML-DSA-65", "ML-DSA-87", "SLH-DSA-SHA2-128s",
+] as const;
+export type KeyAlgorithm = typeof KEY_ALGORITHMS[number];
+
+export const cryptoKeys = pgTable("crypto_keys", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  algorithm: text("algorithm").notNull(),
+  keyType: text("key_type").notNull(),
+  purpose: text("purpose").notNull(),
+  status: text("status").notNull().default("pre-active"),
+  nistQuantumSecurityLevel: integer("nist_quantum_security_level"),
+  isPqc: boolean("is_pqc").default(false),
+  publicKey: text("public_key"),
+  privateKeyEncrypted: text("private_key_encrypted"),
+  keyLength: integer("key_length"),
+  tags: text("tags").array().default([]),
+  cbomFileId: integer("cbom_file_id"),
+  activatedAt: timestamp("activated_at"),
+  expiresAt: timestamp("expires_at"),
+  revokedAt: timestamp("revoked_at"),
+  destroyedAt: timestamp("destroyed_at"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const keyAuditLog = pgTable("key_audit_log", {
+  id: serial("id").primaryKey(),
+  keyId: integer("key_id"),
+  keyName: text("key_name"),
+  action: text("action").notNull(),
+  performedBy: integer("performed_by"),
+  performedByEmail: text("performed_by_email"),
+  details: jsonb("details").$type<Record<string, any>>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const azureKvConnections = pgTable("azure_kv_connections", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  vaultUrl: text("vault_url").notNull(),
+  tenantId: text("tenant_id"),
+  clientId: text("client_id"),
+  subscriptionId: text("subscription_id"),
+  status: text("status").default("unchecked"),
+  lastTestAt: timestamp("last_test_at"),
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const generateKeySchema = z.object({
+  name: z.string().min(1).max(255),
+  algorithm: z.enum(KEY_ALGORITHMS),
+  purpose: z.string().min(1),
+  expiresAt: z.string().optional().nullable(),
+  tags: z.array(z.string()).optional().default([]),
+});
+
+export const insertAzureKvSchema = z.object({
+  name: z.string().min(1),
+  vaultUrl: z.string().url(),
+  tenantId: z.string().optional(),
+  clientId: z.string().optional(),
+  subscriptionId: z.string().optional(),
+});
+
+export type CryptoKey = typeof cryptoKeys.$inferSelect;
+export type InsertCryptoKey = typeof cryptoKeys.$inferInsert;
+export type KeyAuditLogEntry = typeof keyAuditLog.$inferSelect;
+export type InsertKeyAuditLogEntry = typeof keyAuditLog.$inferInsert;
+export type AzureKvConnection = typeof azureKvConnections.$inferSelect;
+export type InsertAzureKvConnection = typeof azureKvConnections.$inferInsert;
+export type GenerateKeyRequest = z.infer<typeof generateKeySchema>;
+export type CreateAzureKvRequest = z.infer<typeof insertAzureKvSchema>;
 
 // ==================== GitHub Repos ====================
 
