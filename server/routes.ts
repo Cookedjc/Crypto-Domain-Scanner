@@ -805,6 +805,25 @@ export async function registerRoutes(
     }
   });
 
+  // Upload a local RFC 5424 file into the server working directory
+  app.post("/api/scripts/upload-rfc5424", requireAuth, async (req, res) => {
+    const { fileName, fileContent } = req.body;
+    if (!fileName || !fileContent) {
+      return res.status(400).json({ message: "fileName and fileContent are required" });
+    }
+    try {
+      const uploadDir = "/tmp/cipherguard-uploads";
+      await fs.mkdir(uploadDir, { recursive: true });
+      const safeName = path.basename(fileName).replace(/[^a-zA-Z0-9._\-]/g, "_");
+      const dest = path.join(uploadDir, `${Date.now()}_${safeName}`);
+      const buf = Buffer.from(fileContent, "base64");
+      await fs.writeFile(dest, buf);
+      res.json({ serverPath: dest, fileName: safeName, sizeBytes: buf.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Upload failed" });
+    }
+  });
+
   // Parse RFC 5424 content (no DB save - preview only)
   app.post("/api/scripts/preview-rfc5424", async (req, res) => {
     const { filePath } = req.body;

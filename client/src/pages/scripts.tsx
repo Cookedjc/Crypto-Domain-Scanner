@@ -102,6 +102,7 @@ function ScriptsTab() {
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [rfc5424Preview, setRfc5424Preview] = useState<any>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [isIngestResultOpen, setIsIngestResultOpen] = useState(false);
   const [ingestResult, setIngestResult] = useState<any>(null);
   const filePickerRef = useRef<HTMLInputElement>(null);
@@ -380,10 +381,11 @@ function ScriptsTab() {
                         variant="outline"
                         size="icon"
                         onClick={() => filePickerRef.current?.click()}
-                        title="Browse local file to set filename"
+                        disabled={isUploading}
+                        title="Browse local file — uploads to server then sets path"
                         data-testid="button-browse-rfc5424-file"
                       >
-                        <FolderOpen className="w-4 h-4" />
+                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FolderOpen className="w-4 h-4" />}
                       </Button>
                       <Button
                         type="button"
@@ -403,17 +405,40 @@ function ScriptsTab() {
                       accept=".log,.syslog,.txt,.gz,*"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
-                        if (file) {
-                          setNewScript({ ...newScript, command: file.name });
-                          setRfc5424Preview(null);
-                        }
+                        if (!file) return;
                         e.target.value = "";
+                        setIsUploading(true);
+                        setRfc5424Preview(null);
+                        const reader = new FileReader();
+                        reader.onload = async () => {
+                          try {
+                            const base64 = (reader.result as string).split(",")[1];
+                            const res = await fetch("/api/scripts/upload-rfc5424", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ fileName: file.name, fileContent: base64 }),
+                            });
+                            const data = await res.json();
+                            if (!res.ok) throw new Error(data.message);
+                            setNewScript(s => ({ ...s, command: data.serverPath }));
+                            toast({
+                              title: "File uploaded",
+                              description: `Copied to server: ${data.serverPath} (${(data.sizeBytes / 1024).toFixed(1)} KB)`,
+                            });
+                            previewRfc5424(data.serverPath);
+                          } catch (err: any) {
+                            toast({ title: "Upload failed", description: err.message, variant: "destructive" });
+                          } finally {
+                            setIsUploading(false);
+                          }
+                        };
+                        reader.readAsDataURL(file);
                       }}
                       data-testid="input-rfc5424-file-picker"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
-                      Enter the absolute server-side path, or use the folder icon to pick a local file and set its name.
-                      Use <code className="font-mono text-[11px]">{"${VAR_NAME}"}</code> for a path that changes at runtime.
+                      Use the folder icon to pick a local file — it will be uploaded to the server and the path set automatically.
+                      Or enter an absolute server-side path directly. Use <code className="font-mono text-[11px]">{"${VAR_NAME}"}</code> for runtime paths.
                     </p>
                   </div>
 
