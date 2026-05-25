@@ -768,6 +768,14 @@ export default function QmiPage() {
   const medCount  = assets.filter(a => { const s = parseFloat(a.qmiScore ?? "0"); return s >= 0.5 && s < 2; }).length;
   const lowCount  = assets.filter(a => parseFloat(a.qmiScore ?? "0") < 0.5).length;
 
+  // Avg T and C across portfolio (raw 1-10 scale)
+  const avgT = assets.length ? assets.reduce((s, a) => s + (a.timeRemaining ?? 5), 0) / assets.length : 0;
+  const avgC = assets.length ? assets.reduce((s, a) => s + (a.migrationCapacity ?? 5), 0) / assets.length : 0;
+  // T → estimated years: each T step ≈ 3 months (0.25 yr), so T=10 ≈ 2.5 yrs
+  const avgTYears = avgT * 0.25;
+  // C → percentage of maximum capacity
+  const avgCPct = (avgC / 10) * 100;
+
   // ── T-factor trend — project QMI if T decreases by 1 for every asset ───────
   // Models one "time period" passing and shows whether the portfolio is
   // improving, holding, or declining under time pressure.
@@ -825,6 +833,77 @@ export default function QmiPage() {
           <Button size="sm" onClick={() => setAddOpen(true)} data-testid="button-add-asset">
             <Plus className="w-4 h-4 mr-2" /> Add Asset
           </Button>
+        </div>
+      </div>
+
+      {/* Avg T / Avg C metric boxes */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {/* Avg T — raw scale */}
+        <div className="bg-card/60 border border-border/40 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-avg-t">
+          <div>
+            <p className="text-xs text-muted-foreground font-mono uppercase">Avg T (Scale)</p>
+            <p className="text-2xl font-bold font-mono mt-1 text-sky-400">
+              {assets.length ? avgT.toFixed(1) : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">out of 10</p>
+          </div>
+          <div className="shrink-0 text-sky-400 opacity-40">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6">
+              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Avg T — estimated years */}
+        <div className="bg-card/60 border border-sky-500/20 bg-sky-500/5 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-avg-t-years">
+          <div>
+            <p className="text-xs text-muted-foreground font-mono uppercase">Est. Runway</p>
+            <p className="text-2xl font-bold font-mono mt-1 text-sky-400">
+              {assets.length
+                ? avgTYears < 1
+                  ? `~${Math.round(avgTYears * 12)}mo`
+                  : `~${avgTYears.toFixed(1)}yr`
+                : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">1 T step ≈ 3 months</p>
+          </div>
+          <div className="shrink-0 text-sky-400 opacity-40">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6">
+              <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Avg C — raw scale */}
+        <div className="bg-card/60 border border-border/40 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-avg-c">
+          <div>
+            <p className="text-xs text-muted-foreground font-mono uppercase">Avg C (Scale)</p>
+            <p className="text-2xl font-bold font-mono mt-1 text-violet-400">
+              {assets.length ? avgC.toFixed(1) : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">out of 10</p>
+          </div>
+          <div className="shrink-0 text-violet-400 opacity-40">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+          </div>
+        </div>
+
+        {/* Avg C — capacity percentage */}
+        <div className="bg-card/60 border border-violet-500/20 bg-violet-500/5 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-avg-c-pct">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground font-mono uppercase">Portfolio Capacity</p>
+            <p className="text-2xl font-bold font-mono mt-1 text-violet-400">
+              {assets.length ? `${avgCPct.toFixed(0)}%` : "—"}
+            </p>
+            <div className="mt-1.5 h-1.5 rounded-full bg-muted/40 overflow-hidden w-full">
+              <div
+                className="h-full rounded-full bg-violet-500/70 transition-all"
+                style={{ width: assets.length ? `${avgCPct}%` : "0%" }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
