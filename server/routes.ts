@@ -2877,6 +2877,52 @@ function keyRoutes(app: Express) {
     }
   });
 
+  // ── Policy Asset Type Templates ────────────────────────────────────────────
+  app.get("/api/policy-asset-types", requireAuth, async (_req, res) => {
+    const rows = await storage.getPolicyAssetTypes();
+    res.json(rows);
+  });
+
+  app.get("/api/policy-asset-types/:id", requireAuth, async (req, res) => {
+    const row = await storage.getPolicyAssetType(Number(req.params.id));
+    if (!row) return res.status(404).json({ message: "Not found" });
+    res.json(row);
+  });
+
+  app.post("/api/policy-asset-types", requireAuth, async (req, res) => {
+    try {
+      const { createPolicyAssetTypeSchema } = await import("@shared/schema");
+      const data = createPolicyAssetTypeSchema.parse(req.body);
+      const row = await storage.createPolicyAssetType(data as any);
+      res.status(201).json(row);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(409).json({ message: "An asset type with this name, type, and domain already exists." });
+      }
+      res.status(400).json({ message: err.message || "Validation failed" });
+    }
+  });
+
+  app.put("/api/policy-asset-types/:id", requireAuth, async (req, res) => {
+    try {
+      const { updatePolicyAssetTypeSchema } = await import("@shared/schema");
+      const data = updatePolicyAssetTypeSchema.parse(req.body);
+      const row = await storage.updatePolicyAssetType(Number(req.params.id), data as any);
+      if (!row) return res.status(404).json({ message: "Not found" });
+      res.json(row);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(409).json({ message: "An asset type with this name, type, and domain already exists." });
+      }
+      res.status(400).json({ message: err.message || "Validation failed" });
+    }
+  });
+
+  app.delete("/api/policy-asset-types/:id", requireAuth, async (req, res) => {
+    await storage.deletePolicyAssetType(Number(req.params.id));
+    res.status(204).end();
+  });
+
   // Import QMI assets from an existing CBOM Manager file
   app.post("/api/qmi/import-from-cbom", requireAuth, async (req, res) => {
     try {

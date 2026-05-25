@@ -48,7 +48,7 @@ import {
   Atom, TrendingUp, TrendingDown, Minus, RefreshCw,
   ChevronDown, ChevronUp, Info, AlertTriangle, Database,
 } from "lucide-react";
-import type { QmiAsset, QmiUpload } from "@shared/schema";
+import type { QmiAsset, QmiUpload, PolicyAssetType } from "@shared/schema";
 import { QMI_ASSET_TYPES, QMI_DATA_CLASSES, QMI_ENVIRONMENTS } from "@shared/schema";
 
 // ─── Score helpers ────────────────────────────────────────────────────────────
@@ -158,8 +158,30 @@ function AssetDialog({
   const { toast } = useToast();
   const [form, setForm] = useState({ ...BLANK_FORM, ...(initial ?? {}) });
   const isEdit = !!initial;
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   const set = (k: string, v: any) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const { data: templates = [] } = useQuery<PolicyAssetType[]>({
+    queryKey: ["/api/policy-asset-types"],
+    enabled: open,
+  });
+
+  function applyTemplate(idStr: string) {
+    const tpl = templates.find(t => String(t.id) === idStr);
+    if (!tpl) return;
+    setSelectedTemplateId(idStr);
+    setForm(prev => ({
+      ...prev,
+      assetType: tpl.assetType as any,
+      migrationCapacity: tpl.defaultMigrationCapacity,
+      timeRemaining: tpl.defaultTimeRemaining,
+      migrationBurden: tpl.defaultMigrationBurden,
+      dependencyDepth: tpl.defaultDependencyDepth,
+      fragility: tpl.defaultFragility,
+    }));
+    toast({ title: `Template applied: ${tpl.name}`, description: "QMI factor defaults and asset type have been pre-filled." });
+  }
 
   const saveMutation = useMutation({
     mutationFn: async (data: typeof form) => {
@@ -200,6 +222,44 @@ function AssetDialog({
         </DialogHeader>
 
         <div className="space-y-5 py-2">
+          {/* Template loader */}
+          {!isEdit && templates.length > 0 && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <Database className="w-3.5 h-3.5 text-primary" />
+                <span className="font-mono text-xs uppercase text-primary">Load from Policy Template</span>
+              </div>
+              <p className="text-xs text-muted-foreground">Select a template defined in Security Policies to pre-fill the asset type and recommended QMI factor defaults.</p>
+              <div className="flex gap-2">
+                <Select value={selectedTemplateId} onValueChange={applyTemplate}>
+                  <SelectTrigger className="flex-1" data-testid="select-template">
+                    <SelectValue placeholder="Choose a template…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map(t => (
+                      <SelectItem key={t.id} value={String(t.id)}>
+                        <div className="flex items-center gap-2">
+                          <span>{t.name}</span>
+                          <span className="text-xs text-muted-foreground font-mono">({t.assetType})</span>
+                          {t.domain && <span className="text-xs text-muted-foreground/60">· {t.domain}</span>}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedTemplateId && (
+                  <button
+                    onClick={() => setSelectedTemplateId("")}
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2"
+                    data-testid="button-clear-template"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Identity */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1 col-span-2">

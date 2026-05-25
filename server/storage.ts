@@ -5,7 +5,7 @@ import {
   users, rolePermissions, authConfig, securityPolicies, reports, outputDirectories,
   githubRepos,
   cryptoKeys, keyAuditLog, azureKvConnections,
-  qmiUploads, qmiAssets,
+  qmiUploads, qmiAssets, policyAssetTypes,
   type InsertScan, type Scan, 
   type CbomFile, type CbomComponent, type InsertCbomFile, type InsertCbomComponent,
   type ScriptVariable, type InsertScriptVariable,
@@ -24,6 +24,7 @@ import {
   type AzureKvConnection, type InsertAzureKvConnection,
   type QmiUpload, type InsertQmiUpload,
   type QmiAsset, type InsertQmiAsset,
+  type PolicyAssetType, type InsertPolicyAssetType,
   USER_TYPES, MENU_ITEMS
 } from "@shared/schema";
 import { eq, desc, and, inArray, lte, isNull, or } from "drizzle-orm";
@@ -153,6 +154,13 @@ export interface IStorage {
   getQmiAsset(id: number): Promise<QmiAsset | undefined>;
   updateQmiAsset(id: number, data: Partial<InsertQmiAsset>): Promise<QmiAsset | undefined>;
   deleteQmiAsset(id: number): Promise<void>;
+
+  // Policy Asset Type Templates
+  createPolicyAssetType(data: InsertPolicyAssetType): Promise<PolicyAssetType>;
+  getPolicyAssetTypes(): Promise<PolicyAssetType[]>;
+  getPolicyAssetType(id: number): Promise<PolicyAssetType | undefined>;
+  updatePolicyAssetType(id: number, data: Partial<InsertPolicyAssetType>): Promise<PolicyAssetType | undefined>;
+  deletePolicyAssetType(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -718,6 +726,34 @@ export class DatabaseStorage implements IStorage {
 
   async deleteQmiAsset(id: number): Promise<void> {
     await db.delete(qmiAssets).where(eq(qmiAssets.id, id));
+  }
+
+  // ── Policy Asset Type Templates ─────────────────────────────────────────────
+
+  async createPolicyAssetType(data: InsertPolicyAssetType): Promise<PolicyAssetType> {
+    const [row] = await db.insert(policyAssetTypes).values(data).returning();
+    return row;
+  }
+
+  async getPolicyAssetTypes(): Promise<PolicyAssetType[]> {
+    return await db.select().from(policyAssetTypes).orderBy(policyAssetTypes.name);
+  }
+
+  async getPolicyAssetType(id: number): Promise<PolicyAssetType | undefined> {
+    const [row] = await db.select().from(policyAssetTypes).where(eq(policyAssetTypes.id, id));
+    return row;
+  }
+
+  async updatePolicyAssetType(id: number, data: Partial<InsertPolicyAssetType>): Promise<PolicyAssetType | undefined> {
+    const [row] = await db.update(policyAssetTypes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(policyAssetTypes.id, id))
+      .returning();
+    return row;
+  }
+
+  async deletePolicyAssetType(id: number): Promise<void> {
+    await db.delete(policyAssetTypes).where(eq(policyAssetTypes.id, id));
   }
 }
 

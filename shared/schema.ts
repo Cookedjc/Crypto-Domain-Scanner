@@ -788,3 +788,50 @@ export const updateQmiAssetSchema = createQmiAssetSchema.partial();
 
 export type CreateQmiAssetRequest = z.infer<typeof createQmiAssetSchema>;
 export type UpdateQmiAssetRequest = z.infer<typeof updateQmiAssetSchema>;
+
+// ==================== Policy Asset Type Templates ====================
+
+export const policyAssetTypes = pgTable("policy_asset_types", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  assetType: text("asset_type").notNull().default("other"),
+  assetCategory: text("asset_category").notNull().default("custom"),
+  domain: text("domain"),
+  description: text("description"),
+  policyIds: integer("policy_ids").array().default([]),
+  defaultMigrationCapacity: integer("default_migration_capacity").notNull().default(5),
+  defaultTimeRemaining: integer("default_time_remaining").notNull().default(5),
+  defaultMigrationBurden: integer("default_migration_burden").notNull().default(5),
+  defaultDependencyDepth: integer("default_dependency_depth").notNull().default(3),
+  defaultFragility: integer("default_fragility").notNull().default(3),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPolicyAssetTypeSchema = createInsertSchema(policyAssetTypes).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+
+export type PolicyAssetType = typeof policyAssetTypes.$inferSelect;
+export type InsertPolicyAssetType = typeof policyAssetTypes.$inferInsert;
+
+export const createPolicyAssetTypeSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  assetType: z.enum(QMI_ASSET_TYPES).default("other"),
+  assetCategory: z.enum(ASSET_CATEGORIES).default("custom"),
+  domain: z.string().optional(),
+  description: z.string().optional(),
+  policyIds: z.array(z.number()).default([]),
+  defaultMigrationCapacity: z.number().int().min(1).max(10).default(5),
+  defaultTimeRemaining: z.number().int().min(1).max(10).default(5),
+  defaultMigrationBurden: z.number().int().min(1).max(10).default(5),
+  defaultDependencyDepth: z.number().int().min(1).max(10).default(3),
+  defaultFragility: z.number().int().min(1).max(10).default(3),
+  notes: z.string().optional(),
+});
+
+export const updatePolicyAssetTypeSchema = createPolicyAssetTypeSchema.partial();
+
+export type CreatePolicyAssetTypeRequest = z.infer<typeof createPolicyAssetTypeSchema>;
+export type UpdatePolicyAssetTypeRequest = z.infer<typeof updatePolicyAssetTypeSchema>;

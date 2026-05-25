@@ -39,9 +39,14 @@ import {
   Archive,
   Usb,
   Lock,
+  Tag,
+  Settings2,
 } from "lucide-react";
-import type { SecurityPolicy, CreateSecurityPolicyRequest } from "@shared/schema";
-import { ASSET_CATEGORY_LABELS, DATA_CLASSIFICATION_LABELS, ASSET_CATEGORIES, DATA_CLASSIFICATIONS, POLICY_STATUSES } from "@shared/schema";
+import type { SecurityPolicy, CreateSecurityPolicyRequest, PolicyAssetType } from "@shared/schema";
+import { ASSET_CATEGORY_LABELS, DATA_CLASSIFICATION_LABELS, ASSET_CATEGORIES, DATA_CLASSIFICATIONS, POLICY_STATUSES, QMI_ASSET_TYPES, ASSET_CATEGORY_LABELS as ACL } from "@shared/schema";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Slider } from "@/components/ui/slider";
 
 const ASSET_CATEGORY_ICONS: Record<string, any> = {
   mobile_devices: Laptop2,
@@ -261,6 +266,10 @@ export default function PoliciesPage() {
               <Shield className="w-4 h-4" />
               Policies
             </TabsTrigger>
+            <TabsTrigger value="asset-types" className="gap-2" data-testid="tab-asset-types">
+              <Tag className="w-4 h-4" />
+              Asset Types
+            </TabsTrigger>
             <TabsTrigger value="matching" className="gap-2" data-testid="tab-matching">
               <Scan className="w-4 h-4" />
               CBOM Matching
@@ -314,6 +323,8 @@ export default function PoliciesPage() {
               </Card>
             )}
           </TabsContent>
+
+          <AssetTypesTab policies={policies || []} />
 
           <TabsContent value="matching">
             {!matchResults ? (
@@ -760,6 +771,348 @@ export default function PoliciesPage() {
         </AnimatePresence>
       </div>
     </Layout>
+  );
+}
+
+// ─── Asset Types Tab ─────────────────────────────────────────────────────────
+
+const BLANK_AT = {
+  name: "",
+  assetType: "other" as const,
+  assetCategory: "custom" as const,
+  domain: "",
+  description: "",
+  policyIds: [] as number[],
+  defaultMigrationCapacity: 5,
+  defaultTimeRemaining: 5,
+  defaultMigrationBurden: 5,
+  defaultDependencyDepth: 3,
+  defaultFragility: 3,
+  notes: "",
+};
+
+function AssetTypesTab({ policies }: { policies: SecurityPolicy[] }) {
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<PolicyAssetType | null>(null);
+  const [form, setForm] = useState({ ...BLANK_AT });
+
+  const { data: assetTypes = [], isLoading } = useQuery<PolicyAssetType[]>({
+    queryKey: ["/api/policy-asset-types"],
+  });
+
+  const setF = (k: string, v: any) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const createMut = useMutation({
+    mutationFn: (data: typeof form) => apiRequest("POST", "/api/policy-asset-types", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/policy-asset-types"] });
+      toast({ title: editing ? "Asset type updated" : "Asset type created" });
+      setDialogOpen(false);
+    },
+    onError: async (err: any) => {
+      const body = await err.response?.json?.().catch(() => null);
+      toast({ title: "Error", description: body?.message || err.message, variant: "destructive" });
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (data: typeof form) => apiRequest("PUT", `/api/policy-asset-types/${editing!.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/policy-asset-types"] });
+      toast({ title: "Asset type updated" });
+      setDialogOpen(false);
+    },
+    onError: async (err: any) => {
+      const body = await err.response?.json?.().catch(() => null);
+      toast({ title: "Error", description: body?.message || err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/policy-asset-types/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/policy-asset-types"] });
+      toast({ title: "Asset type deleted" });
+    },
+  });
+
+  function openCreate() {
+    setEditing(null);
+    setForm({ ...BLANK_AT });
+    setDialogOpen(true);
+  }
+
+  function openEdit(at: PolicyAssetType) {
+    setEditing(at);
+    setForm({
+      name: at.name,
+      assetType: at.assetType as any,
+      assetCategory: at.assetCategory as any,
+      domain: at.domain || "",
+      description: at.description || "",
+      policyIds: at.policyIds || [],
+      defaultMigrationCapacity: at.defaultMigrationCapacity,
+      defaultTimeRemaining: at.defaultTimeRemaining,
+      defaultMigrationBurden: at.defaultMigrationBurden,
+      defaultDependencyDepth: at.defaultDependencyDepth,
+      defaultFragility: at.defaultFragility,
+      notes: at.notes || "",
+    });
+    setDialogOpen(true);
+  }
+
+  function handleSave() {
+    if (!form.name.trim()) {
+      toast({ title: "Name is required", variant: "destructive" });
+      return;
+    }
+    if (editing) {
+      updateMut.mutate(form);
+    } else {
+      createMut.mutate(form);
+    }
+  }
+
+  function togglePolicy(id: number) {
+    const ids = form.policyIds.includes(id)
+      ? form.policyIds.filter(x => x !== id)
+      : [...form.policyIds, id];
+    setF("policyIds", ids);
+  }
+
+  const isPending = createMut.isPending || updateMut.isPending;
+
+  return (
+    <TabsContent value="asset-types" className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            Define named asset type templates with recommended QMI factor defaults. Templates are reusable across assets and respect Security Policy categories.
+          </p>
+        </div>
+        <Button onClick={openCreate} className="gap-2 shrink-0" data-testid="button-add-asset-type">
+          <Plus className="w-4 h-4" /> Add Asset Type
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : assetTypes.length === 0 ? (
+        <Card className="border-border/50">
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <Tag className="w-12 h-12 mx-auto mb-4 text-muted-foreground/50" />
+            <p className="text-lg font-medium mb-1">No asset types defined</p>
+            <p className="text-sm mb-4">Create asset type templates with recommended QMI factor defaults to standardise your migration planning.</p>
+            <Button onClick={openCreate} className="gap-2" data-testid="empty-add-asset-type">
+              <Plus className="w-4 h-4" /> Add Asset Type
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-border/50 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full" data-testid="table-asset-types">
+              <thead className="bg-muted/30 border-b border-border/50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Category</th>
+                  <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Domain</th>
+                  <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">Policies</th>
+                  <th className="px-4 py-3 text-left text-xs font-mono uppercase text-muted-foreground">QMI Defaults (C/T/B/D/F)</th>
+                  <th className="px-4 py-3 text-right text-xs font-mono uppercase text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/30">
+                {assetTypes.map(at => {
+                  const linkedPolicies = (at.policyIds || []).map(id => policies.find(p => p.id === id)?.name).filter(Boolean);
+                  return (
+                    <tr key={at.id} className="hover:bg-muted/20 transition-colors" data-testid={`row-asset-type-${at.id}`}>
+                      <td className="px-4 py-3">
+                        <div>
+                          <p className="font-medium text-sm">{at.name}</p>
+                          {at.description && <p className="text-xs text-muted-foreground max-w-xs truncate">{at.description}</p>}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className="font-mono text-[10px]">{at.assetType}</Badge>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant="secondary" className="text-[10px]">
+                          {ASSET_CATEGORY_LABELS[at.assetCategory as keyof typeof ASSET_CATEGORY_LABELS] || at.assetCategory}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-muted-foreground font-mono">
+                        {at.domain || <span className="text-muted-foreground/40">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {linkedPolicies.length > 0
+                            ? linkedPolicies.map((name, i) => <Badge key={i} variant="outline" className="text-[9px]">{name}</Badge>)
+                            : <span className="text-xs text-muted-foreground/40">None</span>
+                          }
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                        {at.defaultMigrationCapacity}/{at.defaultTimeRemaining}/{at.defaultMigrationBurden}/{at.defaultDependencyDepth}/{at.defaultFragility}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(at)} data-testid={`button-edit-at-${at.id}`}>
+                            <Edit3 className="w-4 h-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" className="text-rose-500" onClick={() => {
+                            if (confirm(`Delete "${at.name}"?`)) deleteMut.mutate(at.id);
+                          }} data-testid={`button-delete-at-${at.id}`}>
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Create / Edit dialog */}
+      <Dialog open={dialogOpen} onOpenChange={v => !v && setDialogOpen(false)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto border-primary/20 bg-card">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <Tag className="w-4 h-4 text-primary" />
+              {editing ? "Edit Asset Type" : "Create Asset Type"}
+            </DialogTitle>
+            <DialogDescription>
+              Define a named asset type with recommended QMI factor defaults. Use domain to distinguish between asset types with the same name in different contexts.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-5 py-2">
+            {/* Uniqueness rule note */}
+            <div className="flex gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              <Settings2 className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+              <span>The combination of <strong>Name + Asset Type + Domain</strong> must be unique. Use Domain to allow the same asset name to appear under multiple policies (e.g. domain "payments" vs "internal").</span>
+            </div>
+
+            {/* Identity */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1 col-span-2">
+                <Label className="font-mono text-xs uppercase text-muted-foreground">Asset Type Name *</Label>
+                <Input value={form.name} onChange={e => setF("name", e.target.value)} placeholder="e.g. Production TLS Certificate" data-testid="input-at-name" />
+              </div>
+              <div className="space-y-1">
+                <Label className="font-mono text-xs uppercase text-muted-foreground">QMI Asset Type</Label>
+                <Select value={form.assetType} onValueChange={v => setF("assetType", v)}>
+                  <SelectTrigger data-testid="select-at-asset-type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {QMI_ASSET_TYPES.map(t => (
+                      <SelectItem key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="font-mono text-xs uppercase text-muted-foreground">Asset Category</Label>
+                <Select value={form.assetCategory} onValueChange={v => setF("assetCategory", v)}>
+                  <SelectTrigger data-testid="select-at-category"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ASSET_CATEGORIES.map(c => (
+                      <SelectItem key={c} value={c}>{ASSET_CATEGORY_LABELS[c]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="font-mono text-xs uppercase text-muted-foreground">Domain <span className="text-muted-foreground/50 normal-case">(optional uniqueness key)</span></Label>
+                <Input value={form.domain} onChange={e => setF("domain", e.target.value)} placeholder="e.g. payments, internal, external" data-testid="input-at-domain" />
+              </div>
+              <div className="space-y-1">
+                <Label className="font-mono text-xs uppercase text-muted-foreground">Description</Label>
+                <Input value={form.description} onChange={e => setF("description", e.target.value)} placeholder="Short description" data-testid="input-at-description" />
+              </div>
+            </div>
+
+            {/* Policy associations */}
+            {policies.length > 0 && (
+              <div className="space-y-2">
+                <Label className="font-mono text-xs uppercase text-muted-foreground">Associated Policies</Label>
+                <p className="text-xs text-muted-foreground/70">Select all policies that govern this asset type. A policy can apply to multiple asset types.</p>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto border border-border/40 rounded-lg p-3 bg-muted/20">
+                  {policies.map(p => (
+                    <label key={p.id} className="flex items-center gap-2 cursor-pointer text-sm" data-testid={`checkbox-policy-${p.id}`}>
+                      <input
+                        type="checkbox"
+                        checked={form.policyIds.includes(p.id)}
+                        onChange={() => togglePolicy(p.id)}
+                        className="accent-primary"
+                      />
+                      <span className="truncate">{p.name}</span>
+                      <Badge variant="outline" className="text-[9px] shrink-0">{p.assetCategory}</Badge>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* QMI defaults */}
+            <div className="space-y-3">
+              <Label className="font-mono text-xs uppercase text-muted-foreground">Recommended QMI Factor Defaults</Label>
+              <p className="text-xs text-muted-foreground/70">These values will be pre-populated when a QMI asset is created using this template.</p>
+              <div className="space-y-4 bg-muted/20 rounded-lg p-4 border border-border/30">
+                {[
+                  { key: "defaultMigrationCapacity", label: "C — Migration Capacity", hint: "Team/tooling readiness (higher = more capable)" },
+                  { key: "defaultTimeRemaining",     label: "T — Time Remaining",      hint: "Available time before deadline (higher = more time)" },
+                  { key: "defaultMigrationBurden",   label: "B — Migration Burden",    hint: "Effort and complexity (higher = harder)" },
+                  { key: "defaultDependencyDepth",   label: "D — Dependency Depth",    hint: "Number of dependent systems (higher = more deps)" },
+                  { key: "defaultFragility",         label: "F — Fragility",           hint: "Risk of breakage during migration (higher = more risk)" },
+                ].map(({ key, label, hint }) => (
+                  <div key={key} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <Label className="font-mono text-xs text-muted-foreground uppercase">{label}</Label>
+                      <span className="font-mono text-xs font-bold text-primary">{(form as any)[key]}</span>
+                    </div>
+                    <Slider
+                      min={1} max={10} step={1}
+                      value={[(form as any)[key]]}
+                      onValueChange={([v]) => setF(key, v)}
+                      className="w-full"
+                      data-testid={`slider-at-${key}`}
+                    />
+                    <p className="text-xs text-muted-foreground/60">{hint}</p>
+                  </div>
+                ))}
+                {/* QMI preview */}
+                <div className="mt-2 rounded-lg border border-border/30 bg-card/60 p-3 flex items-center justify-between">
+                  <span className="font-mono text-xs text-muted-foreground">Estimated QMI</span>
+                  <span className="font-mono text-sm font-bold text-primary">
+                    {((form.defaultMigrationCapacity * form.defaultTimeRemaining) /
+                      (form.defaultMigrationBurden * form.defaultDependencyDepth * form.defaultFragility)).toFixed(3)}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-1">
+              <Label className="font-mono text-xs uppercase text-muted-foreground">Notes</Label>
+              <Textarea value={form.notes} onChange={e => setF("notes", e.target.value)} placeholder="Additional context for this asset type template…" rows={2} data-testid="input-at-notes" />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleSave} disabled={isPending || !form.name.trim()} data-testid="button-save-asset-type">
+              {isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {editing ? "Save Changes" : "Create Asset Type"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </TabsContent>
   );
 }
 
