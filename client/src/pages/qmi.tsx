@@ -46,7 +46,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Plus, Upload, Trash2, Pencil, FileJson, FileText,
   Atom, TrendingUp, TrendingDown, Minus, RefreshCw,
-  ChevronDown, ChevronUp, Info,
+  ChevronDown, ChevronUp, Info, AlertTriangle, Database,
 } from "lucide-react";
 import type { QmiAsset, QmiUpload } from "@shared/schema";
 import { QMI_ASSET_TYPES, QMI_DATA_CLASSES, QMI_ENVIRONMENTS } from "@shared/schema";
@@ -332,6 +332,135 @@ function AssetDialog({
 
 // ─── Upload dialog ────────────────────────────────────────────────────────────
 
+// ─── Import from CBOM Manager dialog ─────────────────────────────────────────
+
+function CbomImportDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { toast } = useToast();
+  const [selectedFileId, setSelectedFileId] = useState<string>("");
+  const [confirmed, setConfirmed] = useState(false);
+
+  const { data: cbomFiles = [], isLoading: filesLoading } = useQuery<any[]>({
+    queryKey: ["/api/cbom/files"],
+    enabled: open,
+  });
+
+  const selectedFile = cbomFiles.find(f => String(f.id) === selectedFileId);
+  const componentCount: number = selectedFile?.componentCount ?? selectedFile?.components?.length ?? "?";
+
+  const importMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/qmi/import-from-cbom", { cbomFileId: Number(selectedFileId) }),
+    onSuccess: async (res: any) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/qmi/assets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/qmi/uploads"] });
+      toast({
+        title: "Import complete",
+        description: `Added ${data.count} asset${data.count !== 1 ? "s" : ""} from "${selectedFile?.filename}"`,
+      });
+      handleClose();
+    },
+    onError: async (err: any) => {
+      const body = err.message ?? "Import failed";
+      toast({ title: "Import failed", description: body, variant: "destructive" });
+    },
+  });
+
+  function handleClose() {
+    setSelectedFileId("");
+    setConfirmed(false);
+    onClose();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && handleClose()}>
+      <DialogContent className="max-w-lg border-primary/20 bg-card">
+        <DialogHeader>
+          <DialogTitle className="font-display flex items-center gap-2">
+            <Database className="w-4 h-4 text-primary" />
+            Import from CBOM Manager
+          </DialogTitle>
+          <DialogDescription>
+            Convert components from an existing CBOM Manager file into QMI assets for migration tracking.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Warning banner */}
+          <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-300 leading-relaxed">
+              Importing will create new QMI assets from the selected CBOM file. If assets with
+              matching names already exist, they will <strong>not</strong> be updated — duplicates
+              may be created. Review and deduplicate after import if needed.
+            </p>
+          </div>
+
+          {/* File selector */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-mono uppercase text-muted-foreground">CBOM File</Label>
+            {filesLoading ? (
+              <p className="text-xs text-muted-foreground">Loading files…</p>
+            ) : cbomFiles.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No CBOM files found. Upload a file in the CBOM Manager tab first.
+              </p>
+            ) : (
+              <Select value={selectedFileId} onValueChange={setSelectedFileId}>
+                <SelectTrigger data-testid="select-cbom-file">
+                  <SelectValue placeholder="Select a CBOM file…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {cbomFiles.map((f: any) => (
+                    <SelectItem key={f.id} value={String(f.id)}>
+                      {f.filename}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Component count hint */}
+          {selectedFile && (
+            <p className="text-xs text-muted-foreground">
+              This file contains <span className="font-mono font-semibold text-primary">{componentCount}</span> component{componentCount !== 1 ? "s" : ""} that will be imported as QMI assets with default factor scores (C=5, T=5, B=5, D=3, F=3). You can adjust individual scores after import.
+            </p>
+          )}
+
+          {/* Confirmation checkbox */}
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={confirmed}
+              onChange={e => setConfirmed(e.target.checked)}
+              data-testid="checkbox-confirm-cbom-import"
+              className="mt-0.5 accent-primary"
+            />
+            <span className="text-xs text-muted-foreground">
+              I understand that duplicate assets may be created and will review after import.
+            </span>
+          </label>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={handleClose} data-testid="button-cancel-cbom-import">
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => importMutation.mutate()}
+            disabled={!selectedFileId || !confirmed || importMutation.isPending}
+            data-testid="button-confirm-cbom-import"
+          >
+            {importMutation.isPending ? "Importing…" : "Import Assets"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function UploadDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { toast } = useToast();
   const [mode, setMode] = useState<"sbom" | "syslog">("sbom");
@@ -551,6 +680,7 @@ export default function QmiPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [editAsset, setEditAsset] = useState<QmiAsset | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [cbomImportOpen, setCbomImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("all");
 
@@ -626,6 +756,9 @@ export default function QmiPage() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={() => setCbomImportOpen(true)} data-testid="button-import-cbom">
+            <Database className="w-4 h-4 mr-2" /> From CBOM
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setUploadOpen(true)} data-testid="button-upload">
             <Upload className="w-4 h-4 mr-2" /> Import File
           </Button>
@@ -918,6 +1051,7 @@ export default function QmiPage() {
       <AssetDialog open={addOpen} onClose={() => setAddOpen(false)} />
       <AssetDialog open={!!editAsset} onClose={() => setEditAsset(null)} initial={editAsset} />
       <UploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
+      <CbomImportDialog open={cbomImportOpen} onClose={() => setCbomImportOpen(false)} />
     </Layout>
   );
 }

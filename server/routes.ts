@@ -2876,6 +2876,73 @@ function keyRoutes(app: Express) {
       res.status(500).json({ message: err.message || "Syslog upload failed" });
     }
   });
+
+  // Import QMI assets from an existing CBOM Manager file
+  app.post("/api/qmi/import-from-cbom", requireAuth, async (req, res) => {
+    try {
+      const { cbomFileId } = req.body as { cbomFileId: number };
+      if (!cbomFileId || isNaN(Number(cbomFileId))) {
+        return res.status(400).json({ message: "cbomFileId is required" });
+      }
+
+      const cbomFile = await storage.getCbomFile(Number(cbomFileId));
+      if (!cbomFile) return res.status(404).json({ message: "CBOM file not found" });
+
+      const components = await storage.getCbomComponentsByFile(Number(cbomFileId));
+      if (components.length === 0) {
+        return res.status(422).json({ message: "No components found in this CBOM file" });
+      }
+
+      // Map CBOM componentType → QMI assetType
+      const mapAssetType = (ct: string | null | undefined): string => {
+        if (!ct) return "other";
+        const l = ct.toLowerCase();
+        if (l.includes("tls") || l.includes("protocol")) return "tls";
+        if (l.includes("cert")) return "certificate";
+        if (l.includes("ssh")) return "ssh";
+        if (l.includes("vpn")) return "vpn";
+        if (l.includes("hsm")) return "hsm";
+        if (l.includes("kms") || l.includes("key-management")) return "kms";
+        if (l.includes("app") || l.includes("library") || l.includes("service")) return "application";
+        return "other";
+      };
+
+      // Derive algorithm string from available CBOM fields
+      const deriveAlgorithm = (c: typeof components[0]): string => {
+        const parts: string[] = [];
+        if (c.name) parts.push(c.name);
+        if (c.algorithmMode) parts.push(c.algorithmMode.toUpperCase());
+        if (c.primitiveType && c.primitiveType !== c.name) parts.push(`(${c.primitiveType})`);
+        return parts.join(" / ").slice(0, 120);
+      };
+
+      const upload = await storage.createQmiUpload({
+        filename: `CBOM: ${cbomFile.filename}`,
+        uploadType: "sbom",
+        assetsFound: components.length,
+      });
+
+      const toInsert: InsertQmiAsset[] = components.map(c => ({
+        uploadId: upload.id,
+        source: "sbom" as const,
+        name: c.name,
+        assetType: mapAssetType(c.componentType),
+        algorithm: deriveAlgorithm(c) || undefined,
+        sourceRef: c.bomRef || undefined,
+        migrationCapacity: 5,
+        timeRemaining: 5,
+        migrationBurden: 5,
+        dependencyDepth: 3,
+        fragility: 3,
+        qmiScore: computeQmiScore(5, 5, 5, 3, 3),
+      }));
+
+      const assets = await storage.createQmiAssets(toInsert);
+      res.status(201).json({ upload, assets, count: assets.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "CBOM import failed" });
+    }
+  });
 }
 
 // Scheduler that runs every minute to check for due scripts
