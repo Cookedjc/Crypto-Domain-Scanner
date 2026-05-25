@@ -569,9 +569,32 @@ export default function QmiPage() {
   // ── Derived stats ──────────────────────────────────────────────────────────
   const scores = assets.map(a => parseFloat(a.qmiScore ?? "0")).filter(s => !isNaN(s));
   const avgScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-  const highCount   = assets.filter(a => parseFloat(a.qmiScore ?? "0") >= 2).length;
-  const medCount    = assets.filter(a => { const s = parseFloat(a.qmiScore ?? "0"); return s >= 0.5 && s < 2; }).length;
-  const lowCount    = assets.filter(a => parseFloat(a.qmiScore ?? "0") < 0.5).length;
+  const highCount = assets.filter(a => parseFloat(a.qmiScore ?? "0") >= 2).length;
+  const medCount  = assets.filter(a => { const s = parseFloat(a.qmiScore ?? "0"); return s >= 0.5 && s < 2; }).length;
+  const lowCount  = assets.filter(a => parseFloat(a.qmiScore ?? "0") < 0.5).length;
+
+  // ── T-factor trend — project QMI if T decreases by 1 for every asset ───────
+  // Models one "time period" passing and shows whether the portfolio is
+  // improving, holding, or declining under time pressure.
+  const projectedScores = assets.map(a => {
+    const C = a.migrationCapacity ?? 5;
+    const T = Math.max((a.timeRemaining ?? 5) - 1, 1); // T drops by 1, floor at 1
+    const B = a.migrationBurden ?? 5;
+    const D = a.dependencyDepth ?? 3;
+    const F = a.fragility ?? 3;
+    return computeQmi(C, T, B, D, F);
+  });
+  const projectedAvg = projectedScores.length
+    ? projectedScores.reduce((a, b) => a + b, 0) / projectedScores.length
+    : 0;
+  // Percentage change from current → projected (negative = declining under time pressure)
+  const trendDeltaPct = avgScore > 0 ? ((projectedAvg - avgScore) / avgScore) * 100 : 0;
+  // Count of assets at T ≤ 3 with QMI < 0.5 — these are the urgent cases
+  const urgentCount = assets.filter(
+    a => (a.timeRemaining ?? 5) <= 3 && parseFloat(a.qmiScore ?? "0") < 0.5
+  ).length;
+  const trendPositive = trendDeltaPct >= 0;
+  const trendNeutral  = assets.length === 0;
 
   // ── Filtered list ──────────────────────────────────────────────────────────
   const filtered = assets.filter(a => {
@@ -609,20 +632,71 @@ export default function QmiPage() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: "Total Assets", value: assets.length, icon: Atom, color: "text-primary" },
-          { label: "Avg QMI Score", value: avgScore.toFixed(3), icon: TrendingUp, color: "text-blue-400" },
-          { label: "High Readiness (≥2)", value: highCount, icon: TrendingUp, color: "text-emerald-400" },
-          { label: "Low Readiness (<0.5)", value: lowCount, icon: TrendingDown, color: "text-rose-400" },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-card/60 border border-border/40 rounded-xl p-4 flex items-center justify-between" data-testid={`kpi-${label.toLowerCase().replace(/\s/g, "-")}`}>
-            <div>
-              <p className="text-xs text-muted-foreground font-mono uppercase">{label}</p>
-              <p className={`text-2xl font-bold font-mono mt-1 ${color}`}>{value}</p>
-            </div>
-            <Icon className={`w-6 h-6 ${color} opacity-40`} />
+        {/* Total Assets */}
+        <div className="bg-card/60 border border-border/40 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-total-assets">
+          <div>
+            <p className="text-xs text-muted-foreground font-mono uppercase">Total Assets</p>
+            <p className="text-2xl font-bold font-mono mt-1 text-primary">{assets.length}</p>
           </div>
-        ))}
+          <Atom className="w-6 h-6 text-primary opacity-40" />
+        </div>
+
+        {/* T-Factor Trend — projects QMI change if T decreases by 1 step */}
+        <div
+          className={`bg-card/60 border rounded-xl p-4 flex items-center justify-between ${
+            trendNeutral
+              ? "border-border/40"
+              : trendPositive
+              ? "border-emerald-500/30 bg-emerald-500/5"
+              : "border-rose-500/30 bg-rose-500/5"
+          }`}
+          data-testid="kpi-t-factor-trend"
+        >
+          <div className="min-w-0">
+            <p className="text-xs text-muted-foreground font-mono uppercase">T-Factor Trend</p>
+            {trendNeutral ? (
+              <p className="text-2xl font-bold font-mono mt-1 text-muted-foreground">—</p>
+            ) : (
+              <>
+                <p className={`text-2xl font-bold font-mono mt-1 ${trendPositive ? "text-emerald-400" : "text-rose-400"}`}>
+                  {trendPositive ? "+" : ""}{trendDeltaPct.toFixed(1)}%
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                  {urgentCount > 0
+                    ? `${urgentCount} urgent (low T + low QMI)`
+                    : trendPositive
+                    ? "Portfolio holding under time pressure"
+                    : "Projected decline as T decreases"}
+                </p>
+              </>
+            )}
+          </div>
+          {trendNeutral ? (
+            <Minus className="w-6 h-6 text-muted-foreground opacity-40 shrink-0" />
+          ) : trendPositive ? (
+            <TrendingUp className="w-6 h-6 text-emerald-400 opacity-60 shrink-0" />
+          ) : (
+            <TrendingDown className="w-6 h-6 text-rose-400 opacity-60 shrink-0" />
+          )}
+        </div>
+
+        {/* High Readiness */}
+        <div className="bg-card/60 border border-border/40 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-high-readiness">
+          <div>
+            <p className="text-xs text-muted-foreground font-mono uppercase">High Readiness (≥2)</p>
+            <p className="text-2xl font-bold font-mono mt-1 text-emerald-400">{highCount}</p>
+          </div>
+          <TrendingUp className="w-6 h-6 text-emerald-400 opacity-40" />
+        </div>
+
+        {/* Low Readiness */}
+        <div className="bg-card/60 border border-border/40 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-low-readiness">
+          <div>
+            <p className="text-xs text-muted-foreground font-mono uppercase">Low Readiness (&lt;0.5)</p>
+            <p className="text-2xl font-bold font-mono mt-1 text-rose-400">{lowCount}</p>
+          </div>
+          <TrendingDown className="w-6 h-6 text-rose-400 opacity-40" />
+        </div>
       </div>
 
       {/* Score distribution bar */}
