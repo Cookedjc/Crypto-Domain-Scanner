@@ -352,7 +352,7 @@ function AssetDialog({
             </p>
             <div className="space-y-4">
               <FactorSlider label="C — Migration Capacity" hint="Team/tooling readiness for this migration (higher = more capable)" value={form.migrationCapacity} onChange={v => set("migrationCapacity", v)} />
-              <FactorSlider label="T — Time Remaining" hint="Available time before deadline (higher = more time)" value={form.timeRemaining} onChange={v => set("timeRemaining", v)} />
+              <FactorSlider label="T — Time Remaining (years)" hint="Whole years until compliance/EOL deadline (1 = 1 yr, 10 = 10 yrs)" value={form.timeRemaining} onChange={v => set("timeRemaining", v)} />
               <FactorSlider label="B — Migration Burden" hint="Effort and complexity of the migration (higher = harder)" value={form.migrationBurden} onChange={v => set("migrationBurden", v)} />
               <FactorSlider label="D — Dependency Depth" hint="Number of systems that depend on this asset (higher = more deps)" value={form.dependencyDepth} onChange={v => set("dependencyDepth", v)} />
               <FactorSlider label="F — Fragility" hint="Risk of breakage during migration (higher = more fragile)" value={form.fragility} onChange={v => set("fragility", v)} />
@@ -768,11 +768,9 @@ export default function QmiPage() {
   const medCount  = assets.filter(a => { const s = parseFloat(a.qmiScore ?? "0"); return s >= 0.5 && s < 2; }).length;
   const lowCount  = assets.filter(a => parseFloat(a.qmiScore ?? "0") < 0.5).length;
 
-  // Avg T and C across portfolio (raw 1-10 scale)
+  // Avg T (whole years, 1–10) and Avg C (1–10 capacity scale) across portfolio
   const avgT = assets.length ? assets.reduce((s, a) => s + (a.timeRemaining ?? 5), 0) / assets.length : 0;
   const avgC = assets.length ? assets.reduce((s, a) => s + (a.migrationCapacity ?? 5), 0) / assets.length : 0;
-  // T → estimated years: each T step ≈ 3 months (0.25 yr), so T=10 ≈ 2.5 yrs
-  const avgTYears = avgT * 0.25;
   // C → percentage of maximum capacity
   const avgCPct = (avgC / 10) * 100;
 
@@ -838,14 +836,14 @@ export default function QmiPage() {
 
       {/* Avg T / Avg C metric boxes */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {/* Avg T — raw scale */}
+        {/* Avg T — years */}
         <div className="bg-card/60 border border-border/40 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-avg-t">
           <div>
-            <p className="text-xs text-muted-foreground font-mono uppercase">Avg T (Scale)</p>
+            <p className="text-xs text-muted-foreground font-mono uppercase">Avg T</p>
             <p className="text-2xl font-bold font-mono mt-1 text-sky-400">
-              {assets.length ? avgT.toFixed(1) : "—"}
+              {assets.length ? `${avgT.toFixed(1)} yr` : "—"}
             </p>
-            <p className="text-xs text-muted-foreground/60 mt-0.5">out of 10</p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">years remaining (max 10)</p>
           </div>
           <div className="shrink-0 text-sky-400 opacity-40">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6">
@@ -854,23 +852,19 @@ export default function QmiPage() {
           </div>
         </div>
 
-        {/* Avg T — estimated years */}
+        {/* Avg T — runway bar */}
         <div className="bg-card/60 border border-sky-500/20 bg-sky-500/5 rounded-xl p-4 flex items-center justify-between" data-testid="kpi-avg-t-years">
-          <div>
-            <p className="text-xs text-muted-foreground font-mono uppercase">Est. Runway</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-muted-foreground font-mono uppercase">Avg Runway</p>
             <p className="text-2xl font-bold font-mono mt-1 text-sky-400">
-              {assets.length
-                ? avgTYears < 1
-                  ? `~${Math.round(avgTYears * 12)}mo`
-                  : `~${avgTYears.toFixed(1)}yr`
-                : "—"}
+              {assets.length ? `${Math.round(avgT)} yr` : "—"}
             </p>
-            <p className="text-xs text-muted-foreground/60 mt-0.5">1 T step ≈ 3 months</p>
-          </div>
-          <div className="shrink-0 text-sky-400 opacity-40">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6">
-              <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-            </svg>
+            <div className="mt-1.5 h-1.5 rounded-full bg-muted/40 overflow-hidden w-full">
+              <div
+                className="h-full rounded-full bg-sky-500/70 transition-all"
+                style={{ width: assets.length ? `${(avgT / 10) * 100}%` : "0%" }}
+              />
+            </div>
           </div>
         </div>
 
@@ -881,7 +875,7 @@ export default function QmiPage() {
             <p className="text-2xl font-bold font-mono mt-1 text-violet-400">
               {assets.length ? avgC.toFixed(1) : "—"}
             </p>
-            <p className="text-xs text-muted-foreground/60 mt-0.5">out of 10</p>
+            <p className="text-xs text-muted-foreground/60 mt-0.5">capacity score (max 10)</p>
           </div>
           <div className="shrink-0 text-violet-400 opacity-40">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-6 h-6">
@@ -945,7 +939,7 @@ export default function QmiPage() {
                     <li><span className="text-rose-400 font-mono">−x.x%</span> red ↓ — portfolio is declining under time pressure (the normal case as deadlines approach).</li>
                     <li><span className="text-emerald-400 font-mono">+x.x%</span> green ↑ — portfolio is holding or improving despite T pressure (unusual — means C/T/B/D/F ratios favour it).</li>
                     <li><span className="font-mono">—</span> — no assets yet.</li>
-                    <li>If any assets have <span className="font-mono">T ≤ 3</span> and <span className="font-mono">QMI &lt; 0.5</span>, the sub-label flags them as urgent — these are the highest priority migrations.</li>
+                    <li>If any assets have <span className="font-mono">T ≤ 3 years</span> and <span className="font-mono">QMI &lt; 0.5</span>, the sub-label flags them as urgent — these are the highest priority migrations.</li>
                   </ul>
                 </TooltipContent>
               </Tooltip>
@@ -1152,7 +1146,7 @@ export default function QmiPage() {
             <div className="space-y-3 text-sm">
               {[
                 { var: "C", name: "Migration Capacity", range: "1–10", desc: "Team and tooling readiness to perform the migration. Higher = more capable." },
-                { var: "T", name: "Time Remaining",      range: "1–10", desc: "Available time before the compliance or EOL deadline. Higher = more runway." },
+                { var: "T", name: "Time Remaining",      range: "1–10 yrs", desc: "Whole years remaining before the compliance or EOL deadline (1 = 1 year, 10 = 10 years)." },
                 { var: "B", name: "Migration Burden",    range: "1–10", desc: "Effort, complexity, and coupling involved in the migration. Higher = harder." },
                 { var: "D", name: "Dependency Depth",    range: "1–10", desc: "Number of systems or services that depend on this asset. Higher = more impact." },
                 { var: "F", name: "Fragility",           range: "1–10", desc: "Likelihood of breakage or regression during migration. Higher = more risk." },
