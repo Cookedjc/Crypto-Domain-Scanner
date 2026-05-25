@@ -36,6 +36,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -653,7 +658,26 @@ export default function QmiPage() {
           data-testid="kpi-t-factor-trend"
         >
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground font-mono uppercase">T-Factor Trend</p>
+            <div className="flex items-center gap-1">
+              <p className="text-xs text-muted-foreground font-mono uppercase">T-Factor Trend</p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button className="text-muted-foreground/50 hover:text-muted-foreground transition-colors" data-testid="info-t-factor-trend">
+                    <Info className="w-3 h-3" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs text-xs leading-relaxed space-y-2 p-3">
+                  <p className="font-semibold text-foreground">T-Factor Trend</p>
+                  <p>Projects what happens to the overall QMI portfolio score if T (time remaining) drops by 1 step for every asset — modelling one period passing.</p>
+                  <ul className="space-y-1.5 mt-1">
+                    <li><span className="text-rose-400 font-mono">−x.x%</span> red ↓ — portfolio is declining under time pressure (the normal case as deadlines approach).</li>
+                    <li><span className="text-emerald-400 font-mono">+x.x%</span> green ↑ — portfolio is holding or improving despite T pressure (unusual — means C/T/B/D/F ratios favour it).</li>
+                    <li><span className="font-mono">—</span> — no assets yet.</li>
+                    <li>If any assets have <span className="font-mono">T ≤ 3</span> and <span className="font-mono">QMI &lt; 0.5</span>, the sub-label flags them as urgent — these are the highest priority migrations.</li>
+                  </ul>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             {trendNeutral ? (
               <p className="text-2xl font-bold font-mono mt-1 text-muted-foreground">—</p>
             ) : (
