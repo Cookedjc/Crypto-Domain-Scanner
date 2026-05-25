@@ -260,7 +260,7 @@ export const USER_TYPES = ["admin", "superuser", "user", "viewer"] as const;
 export type UserType = typeof USER_TYPES[number];
 
 // Menu items that can be controlled via RBAC
-export const MENU_ITEMS = ["dashboard", "scans", "cbom", "scripts", "reports", "keys", "settings"] as const;
+export const MENU_ITEMS = ["dashboard", "scans", "cbom", "scripts", "reports", "keys", "qmi", "settings"] as const;
 export type MenuItem = typeof MENU_ITEMS[number];
 
 // Users table
@@ -692,3 +692,99 @@ export const updateGithubRepoSchema = createGithubRepoSchema.partial();
 
 export type CreateGithubRepoRequest = z.infer<typeof createGithubRepoSchema>;
 export type UpdateGithubRepoRequest = z.infer<typeof updateGithubRepoSchema>;
+
+// ==================== QMI (Quantum Migration Index) ====================
+
+export const QMI_ASSET_TYPES = ["tls", "certificate", "ssh", "vpn", "hsm", "kms", "application", "other"] as const;
+export type QmiAssetType = typeof QMI_ASSET_TYPES[number];
+
+export const QMI_SOURCES = ["sbom", "syslog", "manual"] as const;
+export type QmiSource = typeof QMI_SOURCES[number];
+
+export const QMI_DATA_CLASSES = ["public", "internal", "confidential", "restricted"] as const;
+export type QmiDataClass = typeof QMI_DATA_CLASSES[number];
+
+export const QMI_ENVIRONMENTS = ["production", "staging", "development", "test"] as const;
+export type QmiEnvironment = typeof QMI_ENVIRONMENTS[number];
+
+// Tracks each file upload (SBOM JSON or syslog) used to discover assets
+export const qmiUploads = pgTable("qmi_uploads", {
+  id: serial("id").primaryKey(),
+  filename: text("filename").notNull(),
+  uploadType: text("upload_type").notNull(), // "sbom" | "syslog"
+  assetsFound: integer("assets_found").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// One row per crypto asset subject to quantum migration planning
+export const qmiAssets = pgTable("qmi_assets", {
+  id: serial("id").primaryKey(),
+  uploadId: integer("upload_id"),          // null for manually-added assets
+  source: text("source").notNull().default("manual"), // sbom | syslog | manual
+
+  // Asset identity (auto-populated from uploads or entered manually)
+  name: text("name").notNull(),
+  assetType: text("asset_type").notNull().default("other"), // tls | certificate | ssh | vpn | hsm | kms | application | other
+  algorithm: text("algorithm"),            // e.g. RSA-2048, AES-128-CBC, ECDH-P256
+  sourceRef: text("source_ref"),           // component name / syslog service / file path from parsed source
+
+  // Business context — manually enriched fields
+  dataClass: text("data_class"),           // public | internal | confidential | restricted
+  application: text("application"),        // owning application or system name
+  environment: text("environment"),        // production | staging | development | test
+  vendor: text("vendor"),                  // software/hardware vendor
+  owner: text("owner"),                    // team or person responsible
+
+  // QMI factor inputs (all 1-10 scale)
+  // C — migration capacity: team and tooling readiness
+  migrationCapacity: integer("migration_capacity").default(5),
+  // T — time remaining: available time before compliance deadline (1=almost none, 10=plenty)
+  timeRemaining: integer("time_remaining").default(5),
+  // B — migration burden: effort, complexity, and coupling of the migration
+  migrationBurden: integer("migration_burden").default(5),
+  // D — dependency depth: number of systems that depend on this asset
+  dependencyDepth: integer("dependency_depth").default(3),
+  // F — fragility: likelihood of breakage or regression during migration
+  fragility: integer("fragility").default(3),
+
+  // Stored computed score (QMI = C*T / B*D*F) — recalculated on each update
+  qmiScore: text("qmi_score"),
+
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertQmiUploadSchema = createInsertSchema(qmiUploads).omit({ id: true, createdAt: true });
+export const insertQmiAssetSchema = createInsertSchema(qmiAssets).omit({ id: true, createdAt: true, updatedAt: true });
+
+export type QmiUpload = typeof qmiUploads.$inferSelect;
+export type InsertQmiUpload = typeof qmiUploads.$inferInsert;
+export type QmiAsset = typeof qmiAssets.$inferSelect;
+export type InsertQmiAsset = typeof qmiAssets.$inferInsert;
+
+// Validation schemas for API endpoints
+export const createQmiAssetSchema = z.object({
+  name: z.string().min(1, "Asset name is required"),
+  assetType: z.enum(QMI_ASSET_TYPES).default("other"),
+  algorithm: z.string().optional(),
+  sourceRef: z.string().optional(),
+  dataClass: z.enum(QMI_DATA_CLASSES).optional(),
+  application: z.string().optional(),
+  environment: z.enum(QMI_ENVIRONMENTS).optional(),
+  vendor: z.string().optional(),
+  owner: z.string().optional(),
+  migrationCapacity: z.number().int().min(1).max(10).default(5),
+  timeRemaining: z.number().int().min(1).max(10).default(5),
+  migrationBurden: z.number().int().min(1).max(10).default(5),
+  dependencyDepth: z.number().int().min(1).max(10).default(3),
+  fragility: z.number().int().min(1).max(10).default(3),
+  notes: z.string().optional(),
+  source: z.enum(QMI_SOURCES).default("manual"),
+  uploadId: z.number().optional(),
+});
+
+export const updateQmiAssetSchema = createQmiAssetSchema.partial();
+
+export type CreateQmiAssetRequest = z.infer<typeof createQmiAssetSchema>;
+export type UpdateQmiAssetRequest = z.infer<typeof updateQmiAssetSchema>;

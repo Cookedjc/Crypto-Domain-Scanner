@@ -17,9 +17,11 @@ import {
   createOutputDirectorySchema, updateOutputDirectorySchema,
   createGithubRepoSchema, updateGithubRepoSchema,
   generateKeySchema, insertAzureKvSchema,
+  createQmiAssetSchema, updateQmiAssetSchema,
   loginSchema,
-  type CbomComponent, type SecurityPolicy
+  type CbomComponent, type SecurityPolicy, type InsertQmiAsset
 } from "@shared/schema";
+import { parseSbom, parseSyslog, calculateQmiScore } from "./qmi-parser";
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
@@ -2699,6 +2701,180 @@ function keyRoutes(app: Express) {
       });
       res.json({ success: true, keyName, vault: conn.name });
     } catch { res.status(500).json({ message: "Failed to import key" }); }
+  });
+
+  // ── QMI (Quantum Migration Index) routes ────────────────────────────────────
+
+  /** Helper: compute and format QMI score from factor values */
+  function computeQmiScore(C: number, T: number, B: number, D: number, F: number): string {
+    return calculateQmiScore(C, T, B, D, F).toFixed(4);
+  }
+
+  // List all assets with their QMI scores
+  app.get("/api/qmi/assets", requireAuth, async (_req, res) => {
+    try {
+      const assets = await storage.getQmiAssets();
+      res.json(assets);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch QMI assets" });
+    }
+  });
+
+  // List all uploads (for the upload history panel)
+  app.get("/api/qmi/uploads", requireAuth, async (_req, res) => {
+    try {
+      const uploads = await storage.getQmiUploads();
+      res.json(uploads);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch QMI uploads" });
+    }
+  });
+
+  // Manually create a single asset
+  app.post("/api/qmi/assets", requireAuth, async (req, res) => {
+    try {
+      const data = createQmiAssetSchema.parse(req.body);
+      const qmiScore = computeQmiScore(
+        data.migrationCapacity!, data.timeRemaining!,
+        data.migrationBurden!, data.dependencyDepth!, data.fragility!
+      );
+      const asset = await storage.createQmiAsset({ ...data, qmiScore } as InsertQmiAsset);
+      res.status(201).json(asset);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: err.errors });
+      res.status(500).json({ message: err.message || "Failed to create QMI asset" });
+    }
+  });
+
+  // Update an asset (enrich business context or adjust QMI factors)
+  app.put("/api/qmi/assets/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const existing = await storage.getQmiAsset(id);
+      if (!existing) return res.status(404).json({ message: "Asset not found" });
+
+      const data = updateQmiAssetSchema.parse(req.body);
+      // Recompute score using merged factor values
+      const C = data.migrationCapacity ?? existing.migrationCapacity ?? 5;
+      const T = data.timeRemaining ?? existing.timeRemaining ?? 5;
+      const B = data.migrationBurden ?? existing.migrationBurden ?? 5;
+      const D = data.dependencyDepth ?? existing.dependencyDepth ?? 3;
+      const F = data.fragility ?? existing.fragility ?? 3;
+      const qmiScore = computeQmiScore(C, T, B, D, F);
+      const updated = await storage.updateQmiAsset(id, { ...data, qmiScore } as Partial<InsertQmiAsset>);
+      res.json(updated);
+    } catch (err: any) {
+      if (err.name === "ZodError") return res.status(400).json({ message: err.errors });
+      res.status(500).json({ message: err.message || "Failed to update QMI asset" });
+    }
+  });
+
+  // Delete an asset
+  app.delete("/api/qmi/assets/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await storage.deleteQmiAsset(id);
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to delete QMI asset" });
+    }
+  });
+
+  /**
+   * Upload a CycloneDX SBOM JSON file.
+   * Body: multipart or JSON { filename: string, content: string (raw JSON text) }
+   */
+  app.post("/api/qmi/upload/sbom", requireAuth, async (req, res) => {
+    try {
+      const { filename, content } = req.body as { filename: string; content: string };
+      if (!filename || !content) return res.status(400).json({ message: "filename and content required" });
+
+      let parsed: Record<string, any>;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        return res.status(400).json({ message: "Invalid JSON — could not parse SBOM file" });
+      }
+
+      const extracted = parseSbom(parsed);
+      if (extracted.length === 0) {
+        return res.status(422).json({ message: "No cryptographic assets found in SBOM" });
+      }
+
+      // Record the upload
+      const upload = await storage.createQmiUpload({
+        filename,
+        uploadType: "sbom",
+        assetsFound: extracted.length,
+      });
+
+      // Compute initial QMI scores and insert all extracted assets
+      const toInsert: InsertQmiAsset[] = extracted.map(a => ({
+        ...a,
+        uploadId: upload.id,
+        source: "sbom" as const,
+        name: a.name ?? "Unknown",
+        assetType: a.assetType ?? "other",
+        migrationCapacity: a.migrationCapacity ?? 5,
+        timeRemaining: a.timeRemaining ?? 5,
+        migrationBurden: a.migrationBurden ?? 5,
+        dependencyDepth: a.dependencyDepth ?? 3,
+        fragility: a.fragility ?? 3,
+        qmiScore: computeQmiScore(
+          a.migrationCapacity ?? 5, a.timeRemaining ?? 5,
+          a.migrationBurden ?? 5, a.dependencyDepth ?? 3, a.fragility ?? 3
+        ),
+      }));
+
+      const assets = await storage.createQmiAssets(toInsert);
+      res.status(201).json({ upload, assets, count: assets.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "SBOM upload failed" });
+    }
+  });
+
+  /**
+   * Upload a syslog file for crypto asset discovery.
+   * Body: { filename: string, content: string (plain text syslog) }
+   */
+  app.post("/api/qmi/upload/syslog", requireAuth, async (req, res) => {
+    try {
+      const { filename, content } = req.body as { filename: string; content: string };
+      if (!filename || !content) return res.status(400).json({ message: "filename and content required" });
+
+      const extracted = parseSyslog(content);
+      if (extracted.length === 0) {
+        return res.status(422).json({ message: "No cryptographic events found in syslog" });
+      }
+
+      const upload = await storage.createQmiUpload({
+        filename,
+        uploadType: "syslog",
+        assetsFound: extracted.length,
+      });
+
+      const toInsert: InsertQmiAsset[] = extracted.map(a => ({
+        ...a,
+        uploadId: upload.id,
+        source: "syslog" as const,
+        name: a.name ?? "Unknown",
+        assetType: a.assetType ?? "other",
+        migrationCapacity: a.migrationCapacity ?? 5,
+        timeRemaining: a.timeRemaining ?? 5,
+        migrationBurden: a.migrationBurden ?? 5,
+        dependencyDepth: a.dependencyDepth ?? 3,
+        fragility: a.fragility ?? 3,
+        qmiScore: computeQmiScore(
+          a.migrationCapacity ?? 5, a.timeRemaining ?? 5,
+          a.migrationBurden ?? 5, a.dependencyDepth ?? 3, a.fragility ?? 3
+        ),
+      }));
+
+      const assets = await storage.createQmiAssets(toInsert);
+      res.status(201).json({ upload, assets, count: assets.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Syslog upload failed" });
+    }
   });
 }
 

@@ -5,6 +5,7 @@ import {
   users, rolePermissions, authConfig, securityPolicies, reports, outputDirectories,
   githubRepos,
   cryptoKeys, keyAuditLog, azureKvConnections,
+  qmiUploads, qmiAssets,
   type InsertScan, type Scan, 
   type CbomFile, type CbomComponent, type InsertCbomFile, type InsertCbomComponent,
   type ScriptVariable, type InsertScriptVariable,
@@ -21,6 +22,8 @@ import {
   type CryptoKey, type InsertCryptoKey,
   type KeyAuditLogEntry, type InsertKeyAuditLogEntry,
   type AzureKvConnection, type InsertAzureKvConnection,
+  type QmiUpload, type InsertQmiUpload,
+  type QmiAsset, type InsertQmiAsset,
   USER_TYPES, MENU_ITEMS
 } from "@shared/schema";
 import { eq, desc, and, inArray, lte, isNull, or } from "drizzle-orm";
@@ -140,6 +143,16 @@ export interface IStorage {
   getAzureKvConnection(id: number): Promise<AzureKvConnection | undefined>;
   updateAzureKvConnection(id: number, data: Partial<InsertAzureKvConnection>): Promise<AzureKvConnection | undefined>;
   deleteAzureKvConnection(id: number): Promise<void>;
+
+  // QMI (Quantum Migration Index)
+  createQmiUpload(data: InsertQmiUpload): Promise<QmiUpload>;
+  getQmiUploads(): Promise<QmiUpload[]>;
+  createQmiAsset(data: InsertQmiAsset): Promise<QmiAsset>;
+  createQmiAssets(data: InsertQmiAsset[]): Promise<QmiAsset[]>;
+  getQmiAssets(): Promise<QmiAsset[]>;
+  getQmiAsset(id: number): Promise<QmiAsset | undefined>;
+  updateQmiAsset(id: number, data: Partial<InsertQmiAsset>): Promise<QmiAsset | undefined>;
+  deleteQmiAsset(id: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -663,6 +676,48 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAzureKvConnection(id: number): Promise<void> {
     await db.delete(azureKvConnections).where(eq(azureKvConnections.id, id));
+  }
+
+  // ── QMI (Quantum Migration Index) ──────────────────────────────────────────
+
+  async createQmiUpload(data: InsertQmiUpload): Promise<QmiUpload> {
+    const [row] = await db.insert(qmiUploads).values(data).returning();
+    return row;
+  }
+
+  async getQmiUploads(): Promise<QmiUpload[]> {
+    return await db.select().from(qmiUploads).orderBy(desc(qmiUploads.createdAt));
+  }
+
+  async createQmiAsset(data: InsertQmiAsset): Promise<QmiAsset> {
+    const [row] = await db.insert(qmiAssets).values(data).returning();
+    return row;
+  }
+
+  async createQmiAssets(data: InsertQmiAsset[]): Promise<QmiAsset[]> {
+    if (data.length === 0) return [];
+    return await db.insert(qmiAssets).values(data).returning();
+  }
+
+  async getQmiAssets(): Promise<QmiAsset[]> {
+    return await db.select().from(qmiAssets).orderBy(desc(qmiAssets.createdAt));
+  }
+
+  async getQmiAsset(id: number): Promise<QmiAsset | undefined> {
+    const [row] = await db.select().from(qmiAssets).where(eq(qmiAssets.id, id));
+    return row;
+  }
+
+  async updateQmiAsset(id: number, data: Partial<InsertQmiAsset>): Promise<QmiAsset | undefined> {
+    const [row] = await db.update(qmiAssets)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(qmiAssets.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteQmiAsset(id: number): Promise<void> {
+    await db.delete(qmiAssets).where(eq(qmiAssets.id, id));
   }
 }
 

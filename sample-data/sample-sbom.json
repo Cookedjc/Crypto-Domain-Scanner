@@ -1,0 +1,140 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "serialNumber": "urn:uuid:sample-cipherguard-qmi-001",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-05-25T00:00:00Z",
+    "component": {
+      "type": "application",
+      "name": "sample-web-app",
+      "version": "3.2.1"
+    }
+  },
+  "components": [
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-rsa-2048",
+      "name": "RSA",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "pke",
+          "parameterSetIdentifier": "2048",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "x86_64"
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-aes-128-cbc",
+      "name": "AES",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "blockcipher",
+          "parameterSetIdentifier": "128",
+          "algorithmMode": "cbc",
+          "executionEnvironment": "software-plain-ram"
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ecdh-p256",
+      "name": "ECDH",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "dh",
+          "parameterSetIdentifier": "P-256",
+          "executionEnvironment": "software-plain-ram"
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-sha256",
+      "name": "SHA-256",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "executionEnvironment": "software-plain-ram"
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "cert-tls-leaf",
+      "name": "api.example.com TLS Certificate",
+      "cryptoProperties": {
+        "assetType": "certificate",
+        "certificateProperties": {
+          "subjectName": "CN=api.example.com,O=Example Corp,C=US",
+          "issuerName": "CN=Example CA,O=Example Corp,C=US",
+          "algorithm": "RSA-2048",
+          "notValidBefore": "2025-01-01T00:00:00Z",
+          "notValidAfter": "2026-01-01T00:00:00Z"
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "proto-tls12",
+      "name": "TLS",
+      "cryptoProperties": {
+        "assetType": "protocol",
+        "protocolProperties": {
+          "type": "TLS",
+          "version": "1.2",
+          "cipherSuites": [
+            { "name": "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256" },
+            { "name": "TLS_RSA_WITH_AES_256_CBC_SHA256" }
+          ]
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "algo-ml-kem-768",
+      "name": "ML-KEM",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kem",
+          "parameterSetIdentifier": "768",
+          "executionEnvironment": "software-plain-ram"
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "key-aes-session",
+      "name": "session-key",
+      "cryptoProperties": {
+        "assetType": "related-crypto-material",
+        "relatedCryptoMaterialProperties": {
+          "type": "secret-key",
+          "size": 256,
+          "algorithm": "AES-256-GCM"
+        }
+      }
+    },
+    {
+      "type": "library",
+      "name": "openssl",
+      "version": "1.1.1t",
+      "purl": "pkg:generic/openssl@1.1.1t",
+      "description": "TLS/SSL and crypto library"
+    },
+    {
+      "type": "library",
+      "name": "bouncy-castle",
+      "version": "1.70",
+      "purl": "pkg:maven/org.bouncycastle/bcprov-jdk15on@1.70",
+      "description": "Java crypto and PKI library with RSA/ECDSA support"
+    }
+  ]
+}

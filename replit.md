@@ -6,6 +6,17 @@ CipherGuard is a Post-Quantum Cryptography (PQC) security analysis platform that
 
 The platform enables users to scan domains across multiple ports, optionally enumerate common subdomains, and view detailed reports on cryptographic posture including protocol versions, cipher strength, and quantum-resistance status.
 
+### QMI — Quantum Migration Index
+A dedicated page for tracking post-quantum cryptographic migration readiness across assets:
+- **Asset Discovery**: Import cryptographic assets from CycloneDX SBOM JSON files or syslog files (TLS, certificate, SSH, VPN, HSM, KMS, application events). Add assets manually too.
+- **Business Context Enrichment**: Annotate each asset with data class, application, environment, vendor, and owner.
+- **QMI Score**: Automatic calculation of `QMI = (C × T) / (B × D × F)` where C=migration capacity, T=time remaining, B=migration burden, D=dependency depth, F=fragility (all 1–10 sliders).
+- **Dashboard**: KPI cards (total assets, average score, high/medium/low counts), score distribution bar, expandable asset table with colour-coded risk badges.
+- **Upload History**: Tracks all SBOM and syslog imports with filename, type, and asset count.
+- **Formula Reference**: In-page documentation of the QMI formula and score interpretation thresholds.
+- **Sample Data**: `sample-data/sample-sbom.json` (CycloneDX 1.6) and `sample-data/sample-syslog.log` for testing.
+- **RBAC Integration**: "qmi" added to MENU_ITEMS with full view/edit/delete permission control.
+
 ### GitHub Repository Scanning
 The Active Scans section includes GitHub repository scanning for cryptographic usage analysis:
 - Add GitHub repositories by URL with optional username/password (PAT) authentication for private repos
