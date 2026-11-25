@@ -14,16 +14,14 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=5000
-ENV NODE_PATH=/app/node_modules:/usr/local/lib/node_modules
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates openssl \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev \
-  && npm cache clean --force \
-  && npm install --global drizzle-kit@0.31.8
+# Schema setup uses the project's locked drizzle-kit and its local dependencies.
+RUN npm ci --include=dev && npm cache clean --force
 
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/shared ./shared

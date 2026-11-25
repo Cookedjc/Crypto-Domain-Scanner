@@ -5,7 +5,7 @@ set -eu
 : "${SESSION_SECRET:?Set SESSION_SECRET to a long, random value}"
 
 echo "[entrypoint] Applying database schema..."
-drizzle-kit push --force
+npx --no-install drizzle-kit push
 
 echo "[entrypoint] Starting CipherGuard on port ${PORT:-5000}..."
 exec node dist/index.cjs

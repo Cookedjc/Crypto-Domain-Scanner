@@ -1,0 +1,1 @@
+- [Container deployment decisions](container-deployment.md) — keep app and database separate; use project-local schema tooling and private-by-default access.
