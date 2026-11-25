@@ -1,72 +1,36 @@
-# ─── Stage 1: Install all dependencies ───────────────────────────────────────
-FROM node:20-slim AS deps
+# Build the Vite client and bundled Express server.
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm ci --include=dev
-
-# ─── Stage 2: Build client (Vite) + server (esbuild) ─────────────────────────
-FROM deps AS build
-WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 RUN npm run build
 
-# ─── Stage 3: Production image ────────────────────────────────────────────────
-FROM node:20-slim AS production
-
-# Install PostgreSQL (bundled single-container deployment)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      postgresql \
-      postgresql-client \
-      openssl && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
+# Keep the runtime image separate from the build toolchain and database server.
+FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 
-# ── Runtime environment ────────────────────────────────────────────────────────
 ENV NODE_ENV=production
 ENV PORT=5000
+ENV NODE_PATH=/app/node_modules:/usr/local/lib/node_modules
 
-# PostgreSQL (defaults — override with docker run -e or docker-compose)
-ENV PGDATA=/var/lib/postgresql/data
-ENV PGUSER=cipherguard
-ENV PGPASSWORD=cipherguard
-ENV PGDATABASE=cipherguard
-ENV PGHOST=localhost
-ENV PGPORT=5432
-ENV DATABASE_URL=postgresql://cipherguard:cipherguard@localhost:5432/cipherguard
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates openssl \
+  && rm -rf /var/lib/apt/lists/*
 
-# SESSION_SECRET — auto-generated at container start if not supplied
-# Override with:  docker run -e SESSION_SECRET=your-secret ...
-ENV SESSION_SECRET=""
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev \
+  && npm cache clean --force \
+  && npm install --global drizzle-kit@0.31.8
 
-# ── Production Node dependencies ──────────────────────────────────────────────
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev && npm cache clean --force
+COPY --from=build --chown=node:node /app/dist ./dist
+COPY --from=build --chown=node:node /app/shared ./shared
+COPY --chown=node:node drizzle.config.ts ./drizzle.config.ts
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint
 
-# ── Build artefacts ───────────────────────────────────────────────────────────
-COPY --from=build /app/dist ./dist
-
-# Drizzle schema + config needed for db:push at startup
-COPY --from=build /app/shared ./shared
-COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
-
-# ── Global CLI tools for schema migration ─────────────────────────────────────
-RUN npm install -g drizzle-kit tsx
-
-# ── Entrypoint ────────────────────────────────────────────────────────────────
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN chmod +x /docker-entrypoint.sh
-
-# PostgreSQL socket directory
-RUN mkdir -p /run/postgresql && chown postgres:postgres /run/postgresql
-
+USER node
 EXPOSE 5000
 
-# Persist database between container restarts
-VOLUME ["/var/lib/postgresql/data"]
-
-ENTRYPOINT ["/docker-entrypoint.sh"]
+ENTRYPOINT ["docker-entrypoint"]

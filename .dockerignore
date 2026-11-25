@@ -1,6 +1,11 @@
 node_modules
+**/node_modules
 dist
 .git
+.agents
+.cache
+.config
+.upm
 .gitignore
 .github
 *.md
@@ -10,6 +15,7 @@ dist
 .local
 attached_assets
 screenshots
+sample-data
 .replit
 replit.nix
 generated-icon.png
